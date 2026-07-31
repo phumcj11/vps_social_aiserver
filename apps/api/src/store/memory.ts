@@ -40,6 +40,13 @@ import type {
   UpsertCheckpointInput,
   CollectorRunRecord,
   UpdateCollectorRunInput,
+  OpportunityRecord,
+  OpportunityDecision,
+  OpportunityStatus,
+  CreateOpportunityInput,
+  OpportunityEventRecord,
+  CreateOpportunityEventInput,
+  OpportunityStatistics,
 } from './types';
 
 /**
@@ -63,6 +70,8 @@ export class InMemoryStore implements Store {
   private signals = new Map<string, SignalRecord>(); // keyed by id
   private checkpoints = new Map<string, CollectorCheckpointRecord>(); // keyed by groupId
   private collectorRuns = new Map<string, CollectorRunRecord>(); // keyed by id
+  private opportunities = new Map<string, OpportunityRecord>(); // keyed by id
+  private opportunityEvents: OpportunityEventRecord[] = [];
 
   private now(): Date {
     return new Date();
@@ -820,5 +829,128 @@ export class InMemoryStore implements Store {
       .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
       .slice(0, limit)
       .map((r) => ({ ...r }));
+  }
+
+  // ── Signals (read access for classification) ───────────────────────────────
+
+  async getSignalById(id: string): Promise<SignalRecord | null> {
+    const s = this.signals.get(id);
+    return s ? { ...s } : null;
+  }
+
+  async listUnclassifiedSignals(workspaceId: string, limit = 500): Promise<SignalRecord[]> {
+    const classified = new Set([...this.opportunities.values()].map((o) => o.signalId));
+    return [...this.signals.values()]
+      .filter((s) => s.workspaceId === workspaceId && !classified.has(s.id))
+      .sort((a, b) => a.normalizedAt.getTime() - b.normalizedAt.getTime())
+      .slice(0, limit)
+      .map((s) => ({ ...s }));
+  }
+
+  // ── Opportunities ──────────────────────────────────────────────────────────
+
+  async createOpportunity(input: CreateOpportunityInput): Promise<OpportunityRecord> {
+    for (const o of this.opportunities.values()) {
+      if (o.signalId === input.signalId) throw new Error('duplicate opportunity for signal');
+    }
+    const now = this.now();
+    const record: OpportunityRecord = {
+      id: input.id,
+      workspaceId: input.workspaceId,
+      signalId: input.signalId,
+      decision: input.decision,
+      status: input.status,
+      classifierVersion: input.classifierVersion,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.opportunities.set(record.id, record);
+    return { ...record };
+  }
+
+  async getOpportunityById(id: string): Promise<OpportunityRecord | null> {
+    const o = this.opportunities.get(id);
+    return o ? { ...o } : null;
+  }
+
+  async getOpportunityBySignal(signalId: string): Promise<OpportunityRecord | null> {
+    for (const o of this.opportunities.values()) {
+      if (o.signalId === signalId) return { ...o };
+    }
+    return null;
+  }
+
+  async listOpportunitiesByWorkspace(
+    workspaceId: string,
+    filter: { status?: OpportunityStatus; decision?: OpportunityDecision; limit?: number } = {},
+  ): Promise<OpportunityRecord[]> {
+    return [...this.opportunities.values()]
+      .filter(
+        (o) =>
+          o.workspaceId === workspaceId &&
+          (filter.status === undefined || o.status === filter.status) &&
+          (filter.decision === undefined || o.decision === filter.decision),
+      )
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, filter.limit ?? 200)
+      .map((o) => ({ ...o }));
+  }
+
+  async updateOpportunityStatus(
+    id: string,
+    status: OpportunityStatus,
+  ): Promise<OpportunityRecord | null> {
+    const o = this.opportunities.get(id);
+    if (!o) return null;
+    o.status = status;
+    o.updatedAt = this.now();
+    return { ...o };
+  }
+
+  async opportunityExistsForSignalHash(
+    workspaceId: string,
+    normalizedHash: string,
+  ): Promise<boolean> {
+    for (const o of this.opportunities.values()) {
+      if (o.workspaceId !== workspaceId) continue;
+      const s = this.signals.get(o.signalId);
+      if (s && s.normalizedHash === normalizedHash) return true;
+    }
+    return false;
+  }
+
+  async getOpportunityStatistics(workspaceId: string): Promise<OpportunityStatistics> {
+    const list = [...this.opportunities.values()].filter((o) => o.workspaceId === workspaceId);
+    const total = list.length;
+    const accepted = list.filter((o) => o.decision === 'ACCEPT').length;
+    const rejected = list.filter((o) => o.decision === 'REJECT').length;
+    const newCount = list.filter((o) => o.status === 'NEW').length;
+    const ready = list.filter((o) => o.status === 'READY').length;
+    const archived = list.filter((o) => o.status === 'ARCHIVED').length;
+    const unclassifiedSignals = (await this.listUnclassifiedSignals(workspaceId, 100000)).length;
+    return { total, accepted, rejected, new: newCount, ready, archived, unclassifiedSignals };
+  }
+
+  // ── Opportunity events ─────────────────────────────────────────────────────
+
+  async createOpportunityEvent(
+    input: CreateOpportunityEventInput,
+  ): Promise<OpportunityEventRecord> {
+    const record: OpportunityEventRecord = {
+      id: input.id,
+      opportunityId: input.opportunityId,
+      event: input.event,
+      payload: input.payload,
+      createdAt: this.now(),
+    };
+    this.opportunityEvents.push(record);
+    return { ...record };
+  }
+
+  async listOpportunityEvents(opportunityId: string): Promise<OpportunityEventRecord[]> {
+    return this.opportunityEvents
+      .filter((e) => e.opportunityId === opportunityId)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .map((e) => ({ ...e }));
   }
 }

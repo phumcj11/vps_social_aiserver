@@ -143,6 +143,46 @@ export interface CollectorStatus {
   running: boolean;
 }
 
+export interface Opportunity {
+  id: string;
+  signalId: string;
+  decision: 'ACCEPT' | 'REJECT';
+  status: 'NEW' | 'READY' | 'ARCHIVED';
+  classifierVersion: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OpportunitySignal {
+  id: string;
+  groupId: string;
+  facebookPostId: string | null;
+  postUrl: string;
+  authorName: string | null;
+  authorProfile: string | null;
+  message: string | null;
+  mediaUrls: string[];
+  createdTime: string | null;
+  normalizedAt: string;
+}
+
+export interface OpportunityEvent {
+  id: string;
+  event: string;
+  payload: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface OpportunityStatistics {
+  total: number;
+  accepted: number;
+  rejected: number;
+  new: number;
+  ready: number;
+  archived: number;
+  unclassifiedSignals: number;
+}
+
 export class ApiRequestError extends Error {
   code?: string;
   status: number;
@@ -330,4 +370,33 @@ export const api = {
     request<{ run: CollectorRunSummary | null }>('/collector/stop', { method: 'POST' }),
   listCollectorRuns: () =>
     request<{ runs: CollectorRunSummary[] }>('/collector/runs', { method: 'GET' }),
+
+  // ── Opportunities ──────────────────────────────────────────────────────────
+  classifyOpportunities: () =>
+    request<{ summary: { processed: number; accepted: number; rejected: number } }>(
+      '/opportunities/classify',
+      { method: 'POST' },
+    ),
+  getOpportunityStatistics: () =>
+    request<{ statistics: OpportunityStatistics }>('/opportunities/statistics', { method: 'GET' }),
+  listOpportunities: (filter?: { status?: string; decision?: string }) => {
+    const q = new URLSearchParams();
+    if (filter?.status) q.set('status', filter.status);
+    if (filter?.decision) q.set('decision', filter.decision);
+    const qs = q.toString();
+    return request<{ opportunities: Opportunity[] }>(`/opportunities${qs ? `?${qs}` : ''}`, {
+      method: 'GET',
+    });
+  },
+  getOpportunity: (id: string) =>
+    request<{
+      opportunity: Opportunity;
+      signal: OpportunitySignal | null;
+      events: OpportunityEvent[];
+    }>(`/opportunities/${id}`, { method: 'GET' }),
+  setOpportunityStatus: (id: string, status: string) =>
+    request<{ opportunity: Opportunity }>(`/opportunities/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
 };

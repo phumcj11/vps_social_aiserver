@@ -1,4 +1,4 @@
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, desc, sql, isNull } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import {
   users,
@@ -16,6 +16,8 @@ import {
   facebookSignals,
   collectorCheckpoints,
   collectorRuns,
+  opportunities,
+  opportunityEvents,
 } from '../db/schema';
 import type {
   Store,
@@ -60,6 +62,13 @@ import type {
   CollectorRunRecord,
   CollectorRunStatus,
   UpdateCollectorRunInput,
+  OpportunityRecord,
+  OpportunityDecision,
+  OpportunityStatus,
+  CreateOpportunityInput,
+  OpportunityEventRecord,
+  CreateOpportunityEventInput,
+  OpportunityStatistics,
 } from './types';
 
 /** Parse a JSON-encoded string array column, tolerating null/invalid. */
@@ -1107,6 +1116,194 @@ export class DrizzleStore implements Store {
       workspaceId: row.workspaceId,
       userId: row.userId,
       eventType: row.eventType,
+      payload,
+      createdAt: row.createdAt,
+    };
+  }
+
+  // ── Signals (read access for classification) ───────────────────────────────
+
+  async getSignalById(id: string): Promise<SignalRecord | null> {
+    const rows = await this.db
+      .select()
+      .from(facebookSignals)
+      .where(eq(facebookSignals.id, id))
+      .limit(1);
+    return rows[0] ? this.toSignal(rows[0]) : null;
+  }
+
+  async listUnclassifiedSignals(workspaceId: string, limit = 500): Promise<SignalRecord[]> {
+    const rows = await this.db
+      .select({ s: facebookSignals })
+      .from(facebookSignals)
+      .leftJoin(opportunities, eq(opportunities.signalId, facebookSignals.id))
+      .where(and(eq(facebookSignals.workspaceId, workspaceId), isNull(opportunities.id)))
+      .orderBy(facebookSignals.normalizedAt)
+      .limit(limit);
+    return rows.map((r) => this.toSignal(r.s));
+  }
+
+  // ── Opportunities ──────────────────────────────────────────────────────────
+
+  async createOpportunity(input: CreateOpportunityInput): Promise<OpportunityRecord> {
+    await this.db.insert(opportunities).values({
+      id: input.id,
+      workspaceId: input.workspaceId,
+      signalId: input.signalId,
+      decision: input.decision,
+      status: input.status,
+      classifierVersion: input.classifierVersion,
+    });
+    const created = await this.getOpportunityById(input.id);
+    if (!created) throw new Error('opportunity creation failed');
+    return created;
+  }
+
+  async getOpportunityById(id: string): Promise<OpportunityRecord | null> {
+    const rows = await this.db
+      .select()
+      .from(opportunities)
+      .where(eq(opportunities.id, id))
+      .limit(1);
+    return rows[0] ? this.toOpportunity(rows[0]) : null;
+  }
+
+  async getOpportunityBySignal(signalId: string): Promise<OpportunityRecord | null> {
+    const rows = await this.db
+      .select()
+      .from(opportunities)
+      .where(eq(opportunities.signalId, signalId))
+      .limit(1);
+    return rows[0] ? this.toOpportunity(rows[0]) : null;
+  }
+
+  async listOpportunitiesByWorkspace(
+    workspaceId: string,
+    filter: { status?: OpportunityStatus; decision?: OpportunityDecision; limit?: number } = {},
+  ): Promise<OpportunityRecord[]> {
+    const conds = [eq(opportunities.workspaceId, workspaceId)];
+    if (filter.status) conds.push(eq(opportunities.status, filter.status));
+    if (filter.decision) conds.push(eq(opportunities.decision, filter.decision));
+    const rows = await this.db
+      .select()
+      .from(opportunities)
+      .where(and(...conds))
+      .orderBy(desc(opportunities.createdAt))
+      .limit(filter.limit ?? 200);
+    return rows.map((r) => this.toOpportunity(r));
+  }
+
+  async updateOpportunityStatus(
+    id: string,
+    status: OpportunityStatus,
+  ): Promise<OpportunityRecord | null> {
+    await this.db.update(opportunities).set({ status }).where(eq(opportunities.id, id));
+    return this.getOpportunityById(id);
+  }
+
+  async opportunityExistsForSignalHash(
+    workspaceId: string,
+    normalizedHash: string,
+  ): Promise<boolean> {
+    const rows = await this.db
+      .select({ id: opportunities.id })
+      .from(opportunities)
+      .innerJoin(facebookSignals, eq(facebookSignals.id, opportunities.signalId))
+      .where(
+        and(
+          eq(opportunities.workspaceId, workspaceId),
+          eq(facebookSignals.normalizedHash, normalizedHash),
+        ),
+      )
+      .limit(1);
+    return rows.length > 0;
+  }
+
+  async getOpportunityStatistics(workspaceId: string): Promise<OpportunityStatistics> {
+    const rows = await this.db
+      .select({
+        total: sql<number>`count(*)`,
+        accepted: sql<number>`sum(case when ${opportunities.decision} = 'ACCEPT' then 1 else 0 end)`,
+        rejected: sql<number>`sum(case when ${opportunities.decision} = 'REJECT' then 1 else 0 end)`,
+        newCount: sql<number>`sum(case when ${opportunities.status} = 'NEW' then 1 else 0 end)`,
+        ready: sql<number>`sum(case when ${opportunities.status} = 'READY' then 1 else 0 end)`,
+        archived: sql<number>`sum(case when ${opportunities.status} = 'ARCHIVED' then 1 else 0 end)`,
+      })
+      .from(opportunities)
+      .where(eq(opportunities.workspaceId, workspaceId));
+    const r = rows[0];
+    const unclassified = await this.db
+      .select({ c: sql<number>`count(*)` })
+      .from(facebookSignals)
+      .leftJoin(opportunities, eq(opportunities.signalId, facebookSignals.id))
+      .where(and(eq(facebookSignals.workspaceId, workspaceId), isNull(opportunities.id)));
+    return {
+      total: Number(r?.total ?? 0),
+      accepted: Number(r?.accepted ?? 0),
+      rejected: Number(r?.rejected ?? 0),
+      new: Number(r?.newCount ?? 0),
+      ready: Number(r?.ready ?? 0),
+      archived: Number(r?.archived ?? 0),
+      unclassifiedSignals: Number(unclassified[0]?.c ?? 0),
+    };
+  }
+
+  // ── Opportunity events ─────────────────────────────────────────────────────
+
+  async createOpportunityEvent(
+    input: CreateOpportunityEventInput,
+  ): Promise<OpportunityEventRecord> {
+    await this.db.insert(opportunityEvents).values({
+      id: input.id,
+      opportunityId: input.opportunityId,
+      event: input.event,
+      payload: input.payload ? JSON.stringify(input.payload) : null,
+    });
+    return {
+      id: input.id,
+      opportunityId: input.opportunityId,
+      event: input.event,
+      payload: input.payload,
+      createdAt: new Date(),
+    };
+  }
+
+  async listOpportunityEvents(opportunityId: string): Promise<OpportunityEventRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(opportunityEvents)
+      .where(eq(opportunityEvents.opportunityId, opportunityId))
+      .orderBy(opportunityEvents.createdAt);
+    return rows.map((r) => this.toOpportunityEvent(r));
+  }
+
+  private toOpportunity(row: typeof opportunities.$inferSelect): OpportunityRecord {
+    return {
+      id: row.id,
+      workspaceId: row.workspaceId,
+      signalId: row.signalId,
+      decision: row.decision as OpportunityDecision,
+      status: row.status as OpportunityStatus,
+      classifierVersion: row.classifierVersion,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  private toOpportunityEvent(row: typeof opportunityEvents.$inferSelect): OpportunityEventRecord {
+    let payload: Record<string, unknown> | null = null;
+    if (row.payload) {
+      try {
+        const parsed: unknown = JSON.parse(row.payload);
+        payload = parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null;
+      } catch {
+        payload = null;
+      }
+    }
+    return {
+      id: row.id,
+      opportunityId: row.opportunityId,
+      event: row.event,
       payload,
       createdAt: row.createdAt,
     };

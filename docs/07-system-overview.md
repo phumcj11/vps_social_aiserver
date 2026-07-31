@@ -50,9 +50,11 @@ The customer's setup and review surface: registration, workspaces, businesses, p
 ### Backend API
 The **source of truth and the only place business rules live**. It owns the domain model, enforces every rule in [05-business-rules.md](05-business-rules.md), stores data, decides matches and idempotency, calls the AI provider for drafts, records audit events, and controls the kill switch. Nothing writes to Facebook without the Backend having authorised it based on a recorded human approval.
 
-> **Implementation status.** The Backend is built with Fastify (SPRINT 001). It implements authentication and workspaces (SPRINT 002), the **Business domain** (SPRINT 003), the **Facebook Connection Foundation** (SPRINT 004), the **Facebook Groups Foundation** (SPRINT 005), and the **Collector Engine** (SPRINT 006) — a modular, **read-only** pipeline (Navigation → Extraction → Normalization → Persistence) that opens groups, reads posts, and stores platform-neutral **Signals** ([ADR-009](adr/ADR-009-collector-engine.md), [ADR-010](adr/ADR-010-signal-model.md)). The Collector talks only to a Repository (the single DB boundary) and knows nothing about Business/AI/opportunity. Reading is gated by `FACEBOOK_READER_ENABLED` (default off → no browser). Still no matching, opportunities, commenting, AI, Telegram, or n8n. Facebook writes remain disabled and the kill switch stays on; the Collector Worker is read-only and the Action Worker (write) is disabled.
+> **Implementation status.** The Backend is built with Fastify (SPRINT 001). It implements authentication and workspaces (SPRINT 002), the **Business domain** (SPRINT 003), the **Facebook Connection Foundation** (SPRINT 004), the **Facebook Groups Foundation** (SPRINT 005), the **Collector Engine** (SPRINT 006) — a modular, **read-only** pipeline (Navigation → Extraction → Normalization → Persistence) that opens groups, reads posts, and stores platform-neutral **Signals** ([ADR-009](adr/ADR-009-collector-engine.md), [ADR-010](adr/ADR-010-signal-model.md)) — and the **Opportunity Classification Engine** (SPRINT 007) — a **deterministic, rules-only** stage that reads Signals and decides `ACCEPT`/`REJECT` with explicit Reasons, storing **Opportunities** ([ADR-011](adr/ADR-011-opportunity-classification.md), [ADR-012](adr/ADR-012-opportunity-domain.md)). The Classifier is a pure function (no DB, no AI); the Repository is the single DB boundary; the Coordinator runs the state machine. Reading is gated by `FACEBOOK_READER_ENABLED` (default off → no browser). Still **no Business matching, no AI, no score/confidence, no commenting, no Telegram, no n8n**. Facebook writes remain disabled and the kill switch stays on; the Collector Worker is read-only and the Action Worker (write) is disabled.
 
 > **Terminology (SPRINT 006):** the read-only worker is the **Collector** (formerly "Scanner"), a collected post is a **Signal** (formerly "Post"), the write worker is the **Action Worker** (formerly "Comment Worker"), and a qualified prospect is an **Opportunity** (formerly "Lead").
+>
+> **Terminology (SPRINT 007):** the deciding module is the **Classifier** (formerly "Detector"). An **Opportunity** is now a stored root — the deterministic classification record for one Signal — not merely a presentation bundle.
 
 ### Database
 Durable storage for the domain model: users, workspaces, businesses, profiles, knowledge, matching rules, and later groups, assignments, posts, matches, drafts, decisions, jobs, attempts, audit events, and kill-switch state. It is the persistent backbone the Backend API reads and writes.
@@ -81,12 +83,13 @@ Secure storage for artefacts that do not belong in the database: screenshot evid
 
 ## Data Flow
 
-1. **Scan.** n8n triggers the Scanner → Scanner discovers posts → posts sent to Backend → Backend stores unique posts (BR-13).
-2. **Match & draft.** Backend evaluates each post against assigned businesses → creates Business Matches with scores and reasons → calls the AI Provider with a single business's context → stores a Comment Draft (BR-22).
-3. **Notify.** Backend builds the opportunity → Telegram Bot delivers it to the customer's destination.
-4. **Decide.** Customer taps approve / edit / reject → callback goes to Backend → Backend validates and records the Approval Decision (BR-29).
-5. **Publish.** On approval, Backend creates a Comment Job (checking idempotency and the kill switch) → n8n dispatches it → Comment Executor publishes, verifies, screenshots → Backend records the Comment Attempt, result, and evidence.
-6. **Inform & audit.** Backend sends a success/failure notification via Telegram and appends audit events throughout (BR-46).
+1. **Collect.** The Collector (backend/CLI) opens groups read-only → reads posts → normalizes → stores unique **Signals** (BR-13). *(SPRINT 006.)*
+2. **Classify.** Backend applies the deterministic Classifier to each new Signal → stores an **Opportunity** with Decision (`ACCEPT`/`REJECT`) and Reasons; ACCEPT ⇒ READY, REJECT ⇒ ARCHIVED. No AI, no matching. *(SPRINT 007.)*
+3. **Match & draft.** Backend evaluates each Opportunity's Signal against assigned businesses → creates Business Matches with scores and reasons → calls the AI Provider with a single business's context → stores a Comment Draft (BR-22). *(Later sprint.)*
+4. **Notify.** Backend builds the opportunity bundle → Telegram Bot delivers it to the customer's destination.
+5. **Decide.** Customer taps approve / edit / reject → callback goes to Backend → Backend validates and records the Approval Decision (BR-29).
+6. **Publish.** On approval, Backend creates a Comment Job (checking idempotency and the kill switch) → n8n dispatches it → Comment Executor publishes, verifies, screenshots → Backend records the Comment Attempt, result, and evidence.
+7. **Inform & audit.** Backend sends a success/failure notification via Telegram and appends audit events throughout (BR-46).
 
 Every arrow that changes state passes through the Backend, which is where rules are enforced and history is written.
 

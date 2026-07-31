@@ -390,6 +390,56 @@ export interface UpdateCollectorRunInput {
   errorSummary?: string | null;
 }
 
+// ── Opportunity Classification (SPRINT 007) ──────────────────────────────────
+
+export type OpportunityDecision = 'ACCEPT' | 'REJECT';
+export type OpportunityStatus = 'NEW' | 'READY' | 'ARCHIVED';
+
+export interface OpportunityRecord {
+  id: string;
+  workspaceId: string;
+  signalId: string;
+  decision: OpportunityDecision;
+  status: OpportunityStatus;
+  classifierVersion: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateOpportunityInput {
+  id: string;
+  workspaceId: string;
+  signalId: string;
+  decision: OpportunityDecision;
+  status: OpportunityStatus;
+  classifierVersion: string;
+}
+
+export interface OpportunityEventRecord {
+  id: string;
+  opportunityId: string;
+  event: string;
+  payload: Record<string, unknown> | null;
+  createdAt: Date;
+}
+
+export interface CreateOpportunityEventInput {
+  id: string;
+  opportunityId: string;
+  event: string;
+  payload: Record<string, unknown> | null;
+}
+
+export interface OpportunityStatistics {
+  total: number;
+  accepted: number;
+  rejected: number;
+  new: number;
+  ready: number;
+  archived: number;
+  unclassifiedSignals: number;
+}
+
 export interface Store {
   // Users
   createUser(input: CreateUserInput): Promise<UserRecord>;
@@ -520,4 +570,24 @@ export interface Store {
   getCollectorRunById(id: string): Promise<CollectorRunRecord | null>;
   getLatestCollectorRun(workspaceId: string): Promise<CollectorRunRecord | null>;
   listCollectorRuns(workspaceId: string, limit?: number): Promise<CollectorRunRecord[]>;
+
+  // Signals (read access for classification)
+  getSignalById(id: string): Promise<SignalRecord | null>;
+  listUnclassifiedSignals(workspaceId: string, limit?: number): Promise<SignalRecord[]>;
+
+  // Opportunities
+  createOpportunity(input: CreateOpportunityInput): Promise<OpportunityRecord>;
+  getOpportunityById(id: string): Promise<OpportunityRecord | null>;
+  getOpportunityBySignal(signalId: string): Promise<OpportunityRecord | null>;
+  listOpportunitiesByWorkspace(
+    workspaceId: string,
+    filter?: { status?: OpportunityStatus; decision?: OpportunityDecision; limit?: number },
+  ): Promise<OpportunityRecord[]>;
+  updateOpportunityStatus(id: string, status: OpportunityStatus): Promise<OpportunityRecord | null>;
+  opportunityExistsForSignalHash(workspaceId: string, normalizedHash: string): Promise<boolean>;
+  getOpportunityStatistics(workspaceId: string): Promise<OpportunityStatistics>;
+
+  // Opportunity events
+  createOpportunityEvent(input: CreateOpportunityEventInput): Promise<OpportunityEventRecord>;
+  listOpportunityEvents(opportunityId: string): Promise<OpportunityEventRecord[]>;
 }

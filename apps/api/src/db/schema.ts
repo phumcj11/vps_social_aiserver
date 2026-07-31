@@ -468,3 +468,60 @@ export type FacebookRawSignalRow = typeof facebookRawSignals.$inferSelect;
 export type FacebookSignalRow = typeof facebookSignals.$inferSelect;
 export type CollectorCheckpointRow = typeof collectorCheckpoints.$inferSelect;
 export type CollectorRunRow = typeof collectorRuns.$inferSelect;
+
+/**
+ * ── SPRINT 007: Opportunity Classification Engine ────────────────────────────
+ *
+ * The Classifier decides, deterministically, "Should this Signal become an
+ * Opportunity?" — NO AI, NO ML, NO embeddings, NO confidence, NO score. It knows
+ * NOTHING about Business, Telegram, comments, or matching. An Opportunity is
+ * simply "this Signal deserves further processing".
+ *
+ * One Signal → at most one Opportunity (signal_id is unique).
+ */
+export const opportunities = mysqlTable(
+  'opportunities',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    workspaceId: varchar('workspace_id', { length: 36 })
+      .notNull()
+      .references(() => workspaces.id),
+    // Unique → one Opportunity per Signal.
+    signalId: varchar('signal_id', { length: 36 })
+      .notNull()
+      .references(() => facebookSignals.id),
+    // ACCEPT | REJECT (classifier outcome — no confidence, no score).
+    decision: varchar('decision', { length: 10 }).notNull(),
+    // NEW | READY | ARCHIVED (lifecycle).
+    status: varchar('status', { length: 20 }).notNull().default('NEW'),
+    classifierVersion: varchar('classifier_version', { length: 40 }).notNull(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => ({
+    signalUnique: uniqueIndex('opportunities_signal_unique').on(table.signalId),
+    workspaceIdx: index('opportunities_workspace_idx').on(table.workspaceId),
+    statusIdx: index('opportunities_status_idx').on(table.workspaceId, table.status),
+  }),
+);
+
+/** Append-only lifecycle events for an Opportunity. */
+export const opportunityEvents = mysqlTable(
+  'opportunity_events',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    opportunityId: varchar('opportunity_id', { length: 36 })
+      .notNull()
+      .references(() => opportunities.id),
+    event: varchar('event', { length: 60 }).notNull(),
+    // JSON-encoded safe payload (decision + reasons + status change). No secrets.
+    payload: text('payload'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    opportunityIdx: index('opportunity_events_opportunity_idx').on(table.opportunityId),
+  }),
+);
+
+export type OpportunityRow = typeof opportunities.$inferSelect;
+export type OpportunityEventRow = typeof opportunityEvents.$inferSelect;

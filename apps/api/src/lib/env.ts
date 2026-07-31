@@ -64,6 +64,10 @@ export const apiEnvSchema = z.object({
   COLLECTOR_MAX_SCROLLS: intFromString(5),
   COLLECTOR_MAX_POSTS_PER_GROUP: intFromString(30),
   COLLECTOR_TIMEOUT_MS: intFromString(120_000), // 2 minutes per run
+
+  // Opportunity Classification (SPRINT 007) — deterministic rules, NO AI.
+  // Minimum message length for a Signal to be accepted as an Opportunity.
+  OPPORTUNITY_MIN_TEXT_LENGTH: intFromString(15),
 });
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>;

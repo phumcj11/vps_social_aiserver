@@ -133,6 +133,18 @@ The core of the model is the **Business**. **Facebook** appears only through the
 - **Invariants:** Collection is READ-ONLY and never writes to Facebook. Stored as an immutable raw signal plus a normalized Signal; deduplicated by URL → facebook_post_id → normalized hash.
 - **Implementation status:** Implemented in SPRINT 006 by the Collector Engine — tables `facebook_raw_signals` (immutable) and `facebook_signals` (normalized), with `collector_checkpoints` and `collector_runs`. Collection knows nothing about Business/AI/opportunity. See [34-collector-engine.md](34-collector-engine.md), [37-raw-signal.md](37-raw-signal.md), [38-normalized-signal.md](38-normalized-signal.md).
 
+## Opportunity
+
+> **Promoted to a stored root (SPRINT 007):** as of the Opportunity Classification Engine, an **Opportunity** is a first-class stored entity — the record of a deterministic decision about one Signal. See [ADR-012](adr/ADR-012-opportunity-domain.md), [41-opportunity-lifecycle.md](41-opportunity-lifecycle.md).
+
+- **Purpose:** The record of the Classifier's decision that a Signal is (or is not) worth further processing. Answers only "should this Signal become an Opportunity?" — **no AI, no score, no Business matching**.
+- **Owner:** One Workspace.
+- **Important attributes:** Signal reference (UNIQUE), Decision (`ACCEPT`/`REJECT`, immutable), Status (`NEW`/`READY`/`ARCHIVED`), classifier version; plus an append-only event log carrying the Reasons.
+- **Relationships:** Links to exactly one Signal (one Signal → at most one Opportunity). Has many Opportunity Events.
+- **Lifecycle:** Classified once → ACCEPT ⇒ READY / REJECT ⇒ ARCHIVED → (manual) ARCHIVED. Idempotent; no downstream consumer yet.
+- **Invariants:** UNIQUE `signal_id`; Decision is immutable; classification is deterministic (rules-only, versioned `rules-v1`); workspace-scoped (cross-workspace access is invisible → 404).
+- **Implementation status:** Implemented in SPRINT 007 — tables `opportunities` and `opportunity_events` (migration `0005`); modules Classifier (pure), Repository (only DB boundary), Coordinator. See [40-opportunity-classifier.md](40-opportunity-classifier.md), [43-classification-rules.md](43-classification-rules.md), [ADR-011](adr/ADR-011-opportunity-classification.md).
+
 ## Business Match
 
 - **Purpose:** The judgement that a post is relevant to a particular business, with a score and explanation.
@@ -142,7 +154,7 @@ The core of the model is the **Business**. **Facebook** appears only through the
 - **Lifecycle:** Created by matching → drives an opportunity → resolved by a decision.
 - **Invariants:** Zero, one, or many per post (BR-17); when many, each is presented distinctly and none is silently chosen (BR-19, BR-20).
 
-> **Opportunity.** Throughout the product, an *opportunity* is the human-facing bundle of a Business Match together with its post summary, score, reasons, and Comment Draft. It is a presentation concept built from the entities here, not a separate stored root.
+> **Opportunity (two senses).** The **stored Opportunity** above (SPRINT 007) is the deterministic classification record for one Signal. Separately, later sprints will present a human-facing *opportunity bundle* — a stored Opportunity enriched with a Business Match, post summary, score, reasons, and Comment Draft — for Telegram approval. The bundle is a presentation concept built on top of the stored root; it does not replace it.
 
 ## Comment Draft
 

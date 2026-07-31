@@ -20,6 +20,9 @@ import { registerCollectorRoutes } from './collector/routes';
 import { CollectorRepository } from './collector/repository';
 import { CollectorCoordinator } from './collector/coordinator';
 import { PlaywrightCollectorBrowser, type CollectorBrowser } from './collector/browser';
+import { registerOpportunityRoutes } from './opportunity/routes';
+import { OpportunityRepository } from './opportunity/repository';
+import { OpportunityCoordinator } from './opportunity/coordinator';
 
 export interface ServerDeps {
   store: Store;
@@ -133,6 +136,11 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     env,
     logger,
   });
+  const opportunities = new OpportunityCoordinator({
+    repo: new OpportunityRepository(store),
+    env,
+    logger,
+  });
 
   // Feature routes.
   registerAuthRoutes(app, { store, env, logger, audit });
@@ -141,6 +149,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   registerFacebookRoutes(app, { store, env, facebook });
   registerGroupRoutes(app, { store, env, groupValidation, audit });
   registerCollectorRoutes(app, { store, env, collector });
+  registerOpportunityRoutes(app, { store, env, opportunities });
 
   return app;
 }

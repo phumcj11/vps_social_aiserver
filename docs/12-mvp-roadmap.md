@@ -70,7 +70,18 @@ Scope is bounded by [02-product-scope.md](02-product-scope.md) and [not-doing.md
 - **Exit criteria:** Posts in active groups are collected read-only and stored once (deduplicated), with checkpoints for resume and no write actions ever performed, within resources. **Met.**
 - **Main risks:** Resource exhaustion or accidental writes/contact. Mitigated by concurrency one, a read-only `PageController` (no write methods), the reader gate (no browser by default), bounded scrolls/posts/timeout, and no infinite retries.
 
-## Sprint 007 — Business Matching and AI Draft
+## Sprint 007 — Opportunity Classification Engine
+
+- **Status:** **Complete.** (A deterministic, rules-only stage inserted between the Collector and Business Matching. The concept **Detector → Classifier** is renamed. NO AI, NO ML, NO score/confidence, NO Business matching.)
+- **Goal:** Decide, per Signal, **"should this become an Opportunity?"** using pure deterministic rules; store the Decision, its Reasons, and an event history.
+- **Deliverables:** `opportunities` (UNIQUE `signal_id`) + `opportunity_events` (migration `0005`); three modules — Classifier (pure), Repository (only DB boundary), Coordinator (state machine + ownership); rules `rules-v1` (HAS_TEXT, TEXT_MIN_LENGTH, HAS_AUTHOR, HAS_URL, NOT_DELETED, SUPPORTED_LANGUAGE, NOT_DUPLICATE); API (`/opportunities/classify|:id|:id/status|statistics`); Opportunity Dashboard + Detail; audit events. See [40-opportunity-classifier.md](40-opportunity-classifier.md), [ADR-011](adr/ADR-011-opportunity-classification.md), [ADR-012](adr/ADR-012-opportunity-domain.md).
+- **Exclusions:** No AI/ML/embeddings/vector search; no score/confidence; no Business matching; no Telegram, comment, notification, approval, recommendation, or Facebook write. The Opportunity has no downstream consumer yet.
+- **Exit criteria:** Signals are classified once (idempotent; one Signal → max one Opportunity), Decisions and Reasons are stored and auditable, ACCEPT → READY / REJECT → ARCHIVED, ownership enforced. **Met.**
+- **Main risks:** Scope creep into AI/matching, or duplicate Opportunities. Mitigated by the pure-Classifier boundary (no DB, no model) and the UNIQUE `signal_id` idempotent pass.
+
+> **Note:** the "Opportunity Classification Engine" was inserted here as a deterministic precondition for later intelligence, so **Business Matching and AI Draft** and every subsequent sprint below shift by one.
+
+## Sprint 008 — Business Matching and AI Draft
 
 - **Goal:** Match posts to businesses and generate business-specific drafts, with scores and explanations.
 - **Deliverables:** Matching producing zero/one/many matches with confidence and plain-English reasons; multi-business matches surfaced distinctly; AI draft generation using only the selected business context; prohibited-claim screening; structured AI output validated by the Backend; safe fallback and missing-data behaviour; audit events.
@@ -78,7 +89,7 @@ Scope is bounded by [02-product-scope.md](02-product-scope.md) and [not-doing.md
 - **Exit criteria:** For discovered posts, the system produces correct, explainable matches and compliant drafts; ambiguous matches are never silently resolved; AI never posts.
 - **Main risks:** Cross-business context leakage or hallucination. Mitigated by prompt layering, output contracts, and prohibited-claim checks ([09-ai-design.md](09-ai-design.md)).
 
-## Sprint 008 — Telegram Approval
+## Sprint 009 — Telegram Approval
 
 - **Goal:** Deliver opportunities to Telegram and capture human decisions safely.
 - **Deliverables:** Telegram onboarding/pairing; destination mapping; opportunity messages (business, group, summary, score/reasons, draft); approve/edit/reject/open-post; server-side callback validation; duplicate and expired-callback protection; audit events.
@@ -86,7 +97,7 @@ Scope is bounded by [02-product-scope.md](02-product-scope.md) and [not-doing.md
 - **Exit criteria:** A human can receive opportunities and approve, edit, or reject them from Telegram; decisions are validated and recorded; duplicates/expiry handled safely.
 - **Main risks:** Spoofed or duplicated callbacks. Mitigated by Backend validation and idempotent decision handling ([11-telegram-design.md](11-telegram-design.md)).
 
-## Sprint 009 — Playwright Comment Execution
+## Sprint 010 — Playwright Comment Execution
 
 - **Goal:** Publish approved comments to Facebook, verified and evidenced — the first Facebook writes.
 - **Deliverables:** Comment Executor at concurrency one; direct post navigation; publish approved text; verification; screenshot capture; idempotency (one success per business-and-post); bounded retries after confirmed technical failure; error classification; kill-switch enforcement; success/failure notifications; audit events.
@@ -94,7 +105,7 @@ Scope is bounded by [02-product-scope.md](02-product-scope.md) and [not-doing.md
 - **Exit criteria:** Approved comments are reliably published, verified, and screenshotted; the kill switch halts new writes; idempotency and retry rules hold; failures are surfaced.
 - **Main risks:** Unintended or duplicate posts; checkpoints. Mitigated by verification, idempotency, kill switch, and never bypassing CAPTCHAs.
 
-## Sprint 010 — History, Audit, Screenshot, and Stabilisation
+## Sprint 011 — History, Audit, Screenshot, and Stabilisation
 
 - **Goal:** Make the whole loop trustworthy, complete, and stable.
 - **Deliverables:** Approval History UI; complete, consistent audit trail; screenshot viewing; session-expiry recovery flow; System Status and kill-switch screen; resource and stability hardening within the VPS budget; consistency checks (e.g. no "success" without a screenshot).
@@ -102,7 +113,7 @@ Scope is bounded by [02-product-scope.md](02-product-scope.md) and [not-doing.md
 - **Exit criteria:** History and audit are complete and accurate; recovery and kill-switch flows work; the system is stable within 2 cores/3.8 GiB under pilot load.
 - **Main risks:** Hidden inconsistencies in history. Mitigated by explicit consistency checks and the no-silent-failure rule.
 
-## Sprint 011 — Pilot Release
+## Sprint 012 — Pilot Release
 
 - **Goal:** Onboard the first real pilot customer end to end.
 - **Deliverables:** Pilot onboarding materials; operator runbook (session recovery, checkpoints, kill switch); monitoring of health within budget; a defined feedback loop; go/no-go checklist against [02-product-scope.md](02-product-scope.md)'s pilot-readiness criteria.
