@@ -34,7 +34,13 @@
     "ai-draft:generate": "pnpm --filter @kmkt/api ai-draft:generate",
     "ai-draft:list": "pnpm --filter @kmkt/api ai-draft:list",
     "ai-draft:show": "pnpm --filter @kmkt/api ai-draft:show",
-    "ai-draft:regenerate": "pnpm --filter @kmkt/api ai-draft:regenerate"
+    "ai-draft:regenerate": "pnpm --filter @kmkt/api ai-draft:regenerate",
+    "action:create": "pnpm --filter @kmkt/api action:create",
+    "action:list": "pnpm --filter @kmkt/api action:list",
+    "action:show": "pnpm --filter @kmkt/api action:show",
+    "action:cancel": "pnpm --filter @kmkt/api action:cancel",
+    "action:retry": "pnpm --filter @kmkt/api action:retry",
+    "action:recheck": "pnpm --filter @kmkt/api action:recheck"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

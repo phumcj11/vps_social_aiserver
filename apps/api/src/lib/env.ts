@@ -86,6 +86,24 @@ export const apiEnvSchema = z.object({
   // is connected and the adapter transport refuses to send while disabled. A
   // review decision NEVER posts to Facebook and NEVER triggers a write action.
   TELEGRAM_ENABLED: booleanish(false),
+
+  // Action Queue Engine (SPRINT 011). A SAFE boundary between an approved Human
+  // Review decision and future platform execution. This sprint does NOT execute
+  // Facebook actions and runs NO Action Worker. Execution is disabled by default;
+  // Facebook writes stay disabled and the global kill switch stays on, so every
+  // Action Job is created BLOCKED (never queued for execution) under defaults.
+  ACTION_ENGINE_ENABLED: booleanish(false),
+  ACTION_DEFAULT_MAX_ATTEMPTS: intFromString(3),
+  // Comma-separated allowed action types (only facebook_comment in the MVP).
+  ACTION_ALLOWED_TYPES: z.string().default('facebook_comment'),
+  ACTION_EXECUTION_CONCURRENCY: intFromString(1),
+
+  // Safety gates the Action Policy Guard reads. Both stay in their safe state by
+  // default: Facebook writes disabled, global kill switch on. Nothing here
+  // executes any Facebook action this sprint.
+  FACEBOOK_WRITE_ACTION_ENABLED: booleanish(false),
+  FACEBOOK_COMMENT_ENABLED: booleanish(false),
+  GLOBAL_KILL_SWITCH: booleanish(true),
 });
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>;

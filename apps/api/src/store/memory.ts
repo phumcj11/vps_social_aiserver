@@ -62,7 +62,15 @@ import type {
   ReviewTaskFilter,
   ReviewEventRecord,
   CreateReviewEventInput,
+  ActionJobRecord,
+  ActionType,
+  CreateActionJobInput,
+  UpdateActionJobInput,
+  ActionJobFilter,
+  ActionEventRecord,
+  CreateActionEventInput,
 } from './types';
+import { ACTIVE_ACTION_STATUSES } from './types';
 
 /**
  * In-memory Store implementation for tests. Not used at runtime.
@@ -92,6 +100,8 @@ export class InMemoryStore implements Store {
   private aiDraftEvents: AiDraftEventRecord[] = [];
   private reviewTasks = new Map<string, ReviewTaskRecord>(); // keyed by id
   private reviewEvents: ReviewEventRecord[] = [];
+  private actionJobs = new Map<string, ActionJobRecord>(); // keyed by id
+  private actionEvents: ActionEventRecord[] = [];
 
   private now(): Date {
     return new Date();
@@ -1228,6 +1238,118 @@ export class InMemoryStore implements Store {
   async listReviewEvents(reviewTaskId: string): Promise<ReviewEventRecord[]> {
     return this.reviewEvents
       .filter((e) => e.reviewTaskId === reviewTaskId)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .map((e) => ({ ...e }));
+  }
+
+  // ── Action jobs (SPRINT 011) ───────────────────────────────────────────────
+
+  async createActionJob(input: CreateActionJobInput): Promise<ActionJobRecord> {
+    // At most one ACTIVE job per (review task, action type).
+    for (const j of this.actionJobs.values()) {
+      if (
+        j.reviewTaskId === input.reviewTaskId &&
+        j.actionType === input.actionType &&
+        ACTIVE_ACTION_STATUSES.includes(j.status)
+      ) {
+        throw new Error('duplicate active action job for review task and type');
+      }
+    }
+    const now = this.now();
+    const record: ActionJobRecord = {
+      id: input.id,
+      workspaceId: input.workspaceId,
+      reviewTaskId: input.reviewTaskId,
+      aiDraftId: input.aiDraftId,
+      businessMatchId: input.businessMatchId,
+      actionType: input.actionType,
+      status: input.status,
+      targetPlatform: input.targetPlatform,
+      targetUrl: input.targetUrl,
+      approvedContent: input.approvedContent,
+      attemptCount: 0,
+      maxAttempts: input.maxAttempts,
+      scheduledAt: null,
+      startedAt: null,
+      completedAt: null,
+      cancelledAt: null,
+      blockedAt: input.blockedAt,
+      lastErrorCode: null,
+      lastErrorMessage: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.actionJobs.set(record.id, record);
+    return { ...record };
+  }
+
+  async getActionJobById(id: string): Promise<ActionJobRecord | null> {
+    const j = this.actionJobs.get(id);
+    return j ? { ...j } : null;
+  }
+
+  async listActionJobsByWorkspace(
+    workspaceId: string,
+    filter: ActionJobFilter = {},
+  ): Promise<ActionJobRecord[]> {
+    return [...this.actionJobs.values()]
+      .filter(
+        (j) =>
+          j.workspaceId === workspaceId &&
+          (filter.status === undefined || j.status === filter.status) &&
+          (filter.reviewTaskId === undefined || j.reviewTaskId === filter.reviewTaskId) &&
+          (filter.actionType === undefined || j.actionType === filter.actionType),
+      )
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, filter.limit ?? 500)
+      .map((j) => ({ ...j }));
+  }
+
+  async listActiveActionJobsForReview(
+    reviewTaskId: string,
+    actionType: ActionType,
+  ): Promise<ActionJobRecord[]> {
+    return [...this.actionJobs.values()]
+      .filter(
+        (j) =>
+          j.reviewTaskId === reviewTaskId &&
+          j.actionType === actionType &&
+          ACTIVE_ACTION_STATUSES.includes(j.status),
+      )
+      .map((j) => ({ ...j }));
+  }
+
+  async updateActionJob(id: string, input: UpdateActionJobInput): Promise<ActionJobRecord | null> {
+    const j = this.actionJobs.get(id);
+    if (!j) return null;
+    if (input.status !== undefined) j.status = input.status;
+    if (input.attemptCount !== undefined) j.attemptCount = input.attemptCount;
+    if (input.scheduledAt !== undefined) j.scheduledAt = input.scheduledAt;
+    if (input.startedAt !== undefined) j.startedAt = input.startedAt;
+    if (input.completedAt !== undefined) j.completedAt = input.completedAt;
+    if (input.cancelledAt !== undefined) j.cancelledAt = input.cancelledAt;
+    if (input.blockedAt !== undefined) j.blockedAt = input.blockedAt;
+    if (input.lastErrorCode !== undefined) j.lastErrorCode = input.lastErrorCode;
+    if (input.lastErrorMessage !== undefined) j.lastErrorMessage = input.lastErrorMessage;
+    j.updatedAt = this.now();
+    return { ...j };
+  }
+
+  async createActionEvent(input: CreateActionEventInput): Promise<ActionEventRecord> {
+    const record: ActionEventRecord = {
+      id: input.id,
+      actionJobId: input.actionJobId,
+      event: input.event,
+      payload: input.payload,
+      createdAt: this.now(),
+    };
+    this.actionEvents.push(record);
+    return { ...record };
+  }
+
+  async listActionEvents(actionJobId: string): Promise<ActionEventRecord[]> {
+    return this.actionEvents
+      .filter((e) => e.actionJobId === actionJobId)
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
       .map((e) => ({ ...e }));
   }

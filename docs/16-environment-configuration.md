@@ -70,7 +70,20 @@ For each variable: its **purpose**, **safe default**, whether it is a **secret**
 | Variable | Purpose | Safe default | Secret? | Relevant from | Security notes |
 | -------- | ------- | ------------ | ------- | ------------- | -------------- |
 | `COMMENT_APPROVAL_REQUIRED` | Requires explicit human approval before any comment. | `true` | No | Always | Must never be `false` in the MVP. Enforced by `doctor`. |
-| `GLOBAL_KILL_SWITCH` | Halts all new Facebook write actions. | `true` | No | Always | Defaults ON. Nothing may bypass it. Enforced by `doctor`. |
+| `GLOBAL_KILL_SWITCH` | Halts all new Facebook write actions. | `true` | No | Always | Defaults ON. Nothing may bypass it. Read by the Action Policy Guard — while on, every Action Job is blocked. |
+| `FACEBOOK_WRITE_ACTION_ENABLED` | Enables Facebook write actions. | `false` | No | SPRINT 011 | Read by the Action Policy Guard — while false, every Action Job is blocked. No executor exists this sprint. |
+| `FACEBOOK_COMMENT_ENABLED` | Enables the comment executor. | `false` | No | SPRINT 011 | Must remain `false` until commenting is implemented and approved (a later sprint). |
+
+### Action Queue Engine (SPRINT 011)
+
+The Action Queue is a **safe boundary** — it does NOT execute Facebook actions and runs no worker. With these defaults every Action Job is created **blocked** and never executes.
+
+| Variable | Purpose | Safe default | Secret? | Security notes |
+| -------- | ------- | ------------ | ------- | -------------- |
+| `ACTION_ENGINE_ENABLED` | Enables action execution. | `false` | No | Read by the Action Policy Guard — while false, jobs are blocked. No executor exists this sprint. |
+| `ACTION_DEFAULT_MAX_ATTEMPTS` | Retry cap per job (no infinite retries). | `3` | No | Enforced by the queue's retry guard. |
+| `ACTION_ALLOWED_TYPES` | Comma-separated allowed action types. | `facebook_comment` | No | Only `facebook_comment` in the MVP; others are rejected. |
+| `ACTION_EXECUTION_CONCURRENCY` | Reserved worker concurrency (unused this sprint). | `1` | No | No worker runs this sprint. |
 
 ### Concurrency (conservative for the VPS)
 

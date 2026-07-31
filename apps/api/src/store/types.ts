@@ -608,6 +608,93 @@ export interface CreateReviewEventInput {
   payload: Record<string, unknown> | null;
 }
 
+// ── Action Queue Engine (SPRINT 011) ─────────────────────────────────────────
+
+export type ActionType = 'facebook_comment' | 'facebook_message';
+export type ActionStatus =
+  'queued' | 'blocked' | 'processing' | 'succeeded' | 'failed' | 'cancelled';
+export type TargetPlatform = 'facebook';
+
+/** Active statuses — an Action Job in one of these is "live" (dedup key). */
+export const ACTIVE_ACTION_STATUSES: ActionStatus[] = ['queued', 'blocked', 'processing'];
+
+export interface ActionJobRecord {
+  id: string;
+  workspaceId: string;
+  reviewTaskId: string;
+  aiDraftId: string;
+  businessMatchId: string;
+  actionType: ActionType;
+  status: ActionStatus;
+  targetPlatform: TargetPlatform;
+  targetUrl: string;
+  approvedContent: string;
+  attemptCount: number;
+  maxAttempts: number;
+  scheduledAt: Date | null;
+  startedAt: Date | null;
+  completedAt: Date | null;
+  cancelledAt: Date | null;
+  blockedAt: Date | null;
+  lastErrorCode: string | null;
+  lastErrorMessage: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateActionJobInput {
+  id: string;
+  workspaceId: string;
+  reviewTaskId: string;
+  aiDraftId: string;
+  businessMatchId: string;
+  actionType: ActionType;
+  status: ActionStatus;
+  targetPlatform: TargetPlatform;
+  targetUrl: string;
+  approvedContent: string;
+  maxAttempts: number;
+  blockedAt: Date | null;
+}
+
+/**
+ * Mutable fields only. `approvedContent`, `targetUrl`, `actionType`, and the
+ * source references are NEVER updated — intent is immutable after creation.
+ */
+export interface UpdateActionJobInput {
+  status?: ActionStatus;
+  attemptCount?: number;
+  scheduledAt?: Date | null;
+  startedAt?: Date | null;
+  completedAt?: Date | null;
+  cancelledAt?: Date | null;
+  blockedAt?: Date | null;
+  lastErrorCode?: string | null;
+  lastErrorMessage?: string | null;
+}
+
+export interface ActionJobFilter {
+  status?: ActionStatus;
+  reviewTaskId?: string;
+  actionType?: ActionType;
+  limit?: number;
+}
+
+export interface ActionEventRecord {
+  id: string;
+  actionJobId: string;
+  event: string;
+  payload: Record<string, unknown> | null;
+  createdAt: Date;
+}
+
+export interface CreateActionEventInput {
+  id: string;
+  actionJobId: string;
+  event: string;
+  payload: Record<string, unknown> | null;
+}
+
 export interface Store {
   // Users
   createUser(input: CreateUserInput): Promise<UserRecord>;
@@ -793,4 +880,21 @@ export interface Store {
   // Review events (append-only)
   createReviewEvent(input: CreateReviewEventInput): Promise<ReviewEventRecord>;
   listReviewEvents(reviewTaskId: string): Promise<ReviewEventRecord[]>;
+
+  // Action jobs (SPRINT 011) — safe boundary; execution disabled, no worker
+  createActionJob(input: CreateActionJobInput): Promise<ActionJobRecord>;
+  getActionJobById(id: string): Promise<ActionJobRecord | null>;
+  listActionJobsByWorkspace(
+    workspaceId: string,
+    filter?: ActionJobFilter,
+  ): Promise<ActionJobRecord[]>;
+  listActiveActionJobsForReview(
+    reviewTaskId: string,
+    actionType: ActionType,
+  ): Promise<ActionJobRecord[]>;
+  updateActionJob(id: string, input: UpdateActionJobInput): Promise<ActionJobRecord | null>;
+
+  // Action events (append-only)
+  createActionEvent(input: CreateActionEventInput): Promise<ActionEventRecord>;
+  listActionEvents(actionJobId: string): Promise<ActionEventRecord[]>;
 }

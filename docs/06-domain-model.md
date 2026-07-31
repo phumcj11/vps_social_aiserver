@@ -184,14 +184,17 @@ The core of the model is the **Business**. **Facebook** appears only through the
 - **Invariants:** One Review Task per Draft (`UNIQUE draft_id`); exactly one terminal decision — the first valid decision wins (BR-31); approval is explicit and mandatory before any future comment (BR-29); only authorised users of the owning workspace decide (BR-32); cross-workspace access → 404. A decision **posts nothing** — no Facebook write, no Action Engine.
 - **Implementation status:** Implemented in SPRINT 010 — tables `review_tasks` and `review_events` (migration `0008`); modules ReviewQueue, ReviewRepository, ReviewCoordinator, and the ReviewAdapter interface with a disabled-by-default TelegramReviewAdapter. See [55-review-queue.md](55-review-queue.md), [57-human-decision.md](57-human-decision.md).
 
-## Comment Job
+## Action Job (Comment Job)
 
-- **Purpose:** The unit of work to publish an approved comment.
+> **Implemented as a stored root (SPRINT 011):** the unit of work is an **Action Job** created by the **Action Queue Engine** — a SAFE BOUNDARY between an approved review and future execution. **This sprint does NOT execute** — there is no Action Worker and no Facebook write; every job is created **BLOCKED**. See [ADR-020](adr/ADR-020-action-queue-boundary.md)–[ADR-022](adr/ADR-022-action-execution-disabled-by-default.md), [60-action-job-lifecycle.md](60-action-job-lifecycle.md).
+
+- **Purpose:** The unit of work to publish an approved comment — captured now, executed in a later sprint.
 - **Owner:** One Workspace.
-- **Important attributes:** Approved draft reference, business-and-post combination key, status, retry count.
-- **Relationships:** Created from one approved Approval Decision; runs one or more Comment Attempts.
-- **Lifecycle:** Queued → running → succeeded / failed.
-- **Invariants:** At most one successful comment per business-and-post combination (BR-36); retries only after confirmed technical failure and within the limit (BR-39, BR-41); subject to the Kill Switch (BR-56).
+- **Important attributes:** Review Task reference, AI Draft & Business Match references, action type (`facebook_comment`), status (`queued`/`blocked`/`processing`/`succeeded`/`failed`/`cancelled`), target platform (`facebook`), target URL, **immutable** approved content, attempt/max-attempt counts, lifecycle timestamps, safe error classification. Has many append-only action events.
+- **Relationships:** Created from exactly one **APPROVED** Review Task; a future executor will run it.
+- **Lifecycle:** Created (blocked under current defaults) → cancelled / (future) processing → succeeded / failed → queued (retry, bounded). Terminal: succeeded, cancelled.
+- **Invariants:** Only an APPROVED review creates a job; at most one **active** job per (review, action type); **intent is immutable** — approved content and target are never silently altered; execution disabled by default (engine off + writes off + kill switch on ⇒ blocked); bounded retries (BR-39, BR-41); subject to the Kill Switch (BR-56); workspace-scoped (cross-workspace → 404). A job **posts nothing** this sprint.
+- **Implementation status:** Implemented in SPRINT 011 — tables `action_jobs` and `action_events` (migration `0009`); modules ActionIntentBuilder, ActionPolicyGuard, ActionQueue, ActionRepository, ActionCoordinator. No Action Worker; no Facebook/Playwright/Telegram call. See [59-action-queue-engine.md](59-action-queue-engine.md), [61-action-policy-guard.md](61-action-policy-guard.md).
 
 ## Comment Attempt
 

@@ -2,33 +2,33 @@
 
 ## Current Sprint
 
-**SPRINT 010 — Human Review Engine**
+**SPRINT 011 — Action Queue Engine**
 
 ## Objectives
 
-**Human Review Engine (channel-agnostic core; Telegram is only the first adapter).**
+**Action Queue Engine (safe boundary; NO execution).**
 
-Turn an **AI Draft** into a **Review Task** a human **approves**, **rejects**, or **edits**. **The Review Engine is the core; Telegram is only a Review Adapter and the engine works without it.** Decisions are recorded **only** — NO Facebook comment/message/write, NO Action Engine, NO auto-approval. Concretely:
+Turn an **APPROVED Review Task** into an **Action Job** that captures the approved content and target immutably — a **safe boundary** between an approved decision and future platform execution. **This sprint does NOT execute Facebook actions** and runs **NO Action Worker**; every job is created **BLOCKED** under current safety defaults. Concretely:
 
-- Database: `review_tasks` (UNIQUE `draft_id` — one Draft → one Review Task) + `review_events` (migration `0008`).
-- Three engine modules: ReviewQueue (create/assign/expire), ReviewRepository (only DB boundary), ReviewCoordinator (AI Draft → Review Task; approve/reject/edit; ownership; best-effort adapter).
-- ReviewAdapter interface (`sendReview`/`updateReview`/`closeReview`) + NoopReviewAdapter; TelegramReviewAdapter (renders + relays via a disabled-by-default transport; never touches the DB).
-- API, Review Queue + Review Detail (+ Decision History) web pages, "Send to Review" from AI Drafts.
-- Documentation ([54](54-review-engine.md)–[58](58-telegram-review-adapter.md)) and [ADR-018](adr/ADR-018-review-engine.md)/[ADR-019](adr/ADR-019-telegram-adapter.md).
+- Database: `action_jobs` + `action_events` (migration `0009`).
+- Five modules: ActionIntentBuilder (pure), ActionPolicyGuard (pure; ALLOW/BLOCK/REJECT), ActionQueue (state machine), ActionRepository (only DB boundary), ActionCoordinator.
+- Only APPROVED reviews create jobs; one active job per (review, action type); intent immutable; execution disabled by default.
+- API, Action Queue + Action Detail web pages, "Create Action Job" on approved Review Detail, `action:*` CLI; 9 audit event types.
+- Documentation ([59](59-action-queue-engine.md)–[63](63-action-queue-runbook.md)) and [ADR-020](adr/ADR-020-action-queue-boundary.md)/[ADR-021](adr/ADR-021-approved-review-to-action-job.md)/[ADR-022](adr/ADR-022-action-execution-disabled-by-default.md).
 
 ## Scope
 
 **In scope**
 
-- Review Task lifecycle: PENDING → APPROVED / REJECTED / EXPIRED; EDIT stays PENDING (approval still required).
-- One Draft → one Review Task (idempotent enqueue); first valid decision wins (duplicate protection); append-only events.
-- Channel-agnostic adapter boundary; Telegram adapter renders business/opportunity/draft + Approve/Reject/Edit/Open-Post/Open-Business, disabled by default.
+- Approved Review → immutable Intent → Policy Guard → Action Job (queued or **blocked**) → events.
+- State machine (queued/blocked/processing/succeeded/failed/cancelled) with enforced transitions; cancel / retry (bounded) / recheck-policy.
+- Workspace isolation, idempotency (one active job per review+type), full auditability. No silent failures, no infinite retries.
 
 **Out of scope**
 
-- Facebook comment/message/write, Action Engine, auto-approval, auto-comment.
-- A live Telegram bot / pairing / webhook; billing; subscription; teams.
-- The Review Task has no downstream executor — the pipeline ends at the human decision.
+- Facebook comment/message execution, Playwright write, Facebook write, an Action Adapter/Worker.
+- Telegram sending, auto-approval, auto-comment, billing, subscription, teams.
+- The Action Job has no executor — the pipeline ends at the job.
 
 The full exclusion list is in [not-doing.md](not-doing.md).
 
@@ -36,19 +36,19 @@ The full exclusion list is in [not-doing.md](not-doing.md).
 
 **Complete (not committed).**
 
-The engine turns an AI Draft into a Review Task and records the human decision — as a channel-agnostic core where the Queue handles create/assign/expire, the Repository is the only DB boundary, and the Coordinator orchestrates decisions and (best-effort) adapter delivery. One Draft → one Review Task (`UNIQUE draft_id`); enqueue is idempotent. APPROVE/REJECT are terminal (first valid decision wins); EDIT stores revised text and keeps the task PENDING (approval still required). Telegram is only the first Review Adapter: it renders the review and its buttons and relays via a transport that is **disabled by default** (no bot connected) — it never touches the database, and decisions route Telegram → Review API → Coordinator → Repository. The engine works with no adapter at all. No Facebook write, no comment, no Action Engine, no auto-approval. The full quality suite passes (lint, typecheck, test — 278 passing, build, format:check, doctor) and `db:status` is green; the flow was verified live against MySQL (enqueue → detail → edit → approve → duplicate-decision 409 → reject → filters → cross-workspace 404; the disabled adapter was safely skipped). No commit was made this sprint. Detail: [sprints/SPRINT-010-human-review.md](sprints/SPRINT-010-human-review.md).
+An APPROVED review creates an Action Job that captures the approved (or edited) content and the Facebook post target immutably — as pure Intent/Policy modules, an ActionQueue state machine, an ActionRepository (the only DB boundary), and an ActionCoordinator. Only APPROVED reviews create jobs; PENDING/REJECTED/EXPIRED never do. At most one active job exists per (review, action type). The Policy Guard blocks a job unless the engine is enabled, Facebook writes are enabled, and the kill switch is off — so under current defaults every job is created **BLOCKED** and `recheck-policy` keeps it blocked. There is **no Action Worker** and **no Facebook/Playwright/Telegram/AI call** anywhere; `processing` is never entered at runtime. Cancel, bounded retry, and recheck are supported; every transition is an auditable event with safe payloads. The full quality suite passes (lint, typecheck, test — 319 passing, build, format:check, doctor) and `db:status` is green; the flow was verified live against MySQL (create → blocked → duplicate 409 → recheck stays blocked → PENDING/REJECTED 409 → cancel → cross-workspace 404). No commit was made this sprint. Detail: [sprints/SPRINT-011-action-queue.md](sprints/SPRINT-011-action-queue.md).
 
 ## Definition of Done
 
-- [x] Migration `0008` (`review_tasks` UNIQUE `draft_id`, `review_events`); no Facebook/comment-job/action/telegram-destination tables.
-- [x] Three engine modules (Queue, Repository sole DB boundary, Coordinator) + ReviewAdapter interface + TelegramReviewAdapter (disabled transport).
-- [x] One Draft → one Review Task; idempotent enqueue; APPROVE/REJECT/EDIT; first valid decision wins.
-- [x] Telegram never writes the DB (Telegram → Review API → Coordinator → Repository); engine works without Telegram.
-- [x] API + Review Queue + Detail + Decision History; ownership enforced (404 cross-workspace).
-- [x] Tests (278 passing, 33 new: queue, repository, coordinator, adapter, ownership, API) with a fake transport; no network.
-- [x] Full quality suite + `db:status` green; live runtime verified; no Facebook/comment/action/write.
-- [x] Documentation + ADR-018/019. **No commit** made.
+- [x] Migration `0009` (`action_jobs`, `action_events`); no credential/profile/cookie columns; no screenshot/comment-result table.
+- [x] Five modules (Intent/Policy pure; Queue state machine; Repository sole DB boundary; Coordinator).
+- [x] Only APPROVED reviews create jobs; one active job per (review, type); intent immutable.
+- [x] Execution disabled by default → jobs BLOCKED; recheck stays blocked; state machine enforced; retries bounded.
+- [x] 9 events with safe payloads; API + UI + CLI; ownership enforced (404); no secrets in responses.
+- [x] No Action Worker; no Facebook/Playwright/Telegram/AI call; no `processing` at runtime.
+- [x] Tests (319 passing, 41 new) with mocks; full quality suite + `db:status` green; live runtime verified.
+- [x] Documentation + ADR-020/021/022. **No commit** made.
 
 ## Next
 
-On sign-off, the project proceeds to **SPRINT 011 — Playwright Comment Execution**: publish approved comments to Facebook, verified and evidenced — the first Facebook writes, gated by human approval and the kill switch. See [12-mvp-roadmap.md](12-mvp-roadmap.md).
+On sign-off, the project proceeds to **SPRINT 012 — Action Execution (Playwright Comment)**: build the executor behind this boundary — publish approved comments to Facebook, verified and evidenced, at concurrency one, gated by the kill switch and idempotency. See [12-mvp-roadmap.md](12-mvp-roadmap.md).

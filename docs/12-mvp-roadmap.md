@@ -110,15 +110,26 @@ Scope is bounded by [02-product-scope.md](02-product-scope.md) and [not-doing.md
 - **Exit criteria:** A human can approve, edit, or reject a Review Task; decisions are validated, recorded, and audited; one Draft → one Review Task; duplicates/expiry handled safely; the engine works without Telegram; nothing is posted. **Met.**
 - **Main risks:** Telegram becoming the source of truth, spoofed/duplicated decisions, or a decision posting. Mitigated by the channel-agnostic core (Telegram → Review API → Coordinator → Repository; adapter never writes the DB), Backend validation, first-valid-decision-wins, and the absence of any posting/Action path ([ADR-018](adr/ADR-018-review-engine.md)).
 
-## Sprint 011 — Playwright Comment Execution
+## Sprint 011 — Action Queue Engine (safe boundary before execution)
 
-- **Goal:** Publish approved comments to Facebook, verified and evidenced — the first Facebook writes.
+- **Status:** **Complete.** (Delivered as a **safe boundary**: an APPROVED review creates an immutable **Action Job**. Execution is disabled by default and NO Action Worker runs — every job is created **BLOCKED**. Playwright comment execution moves to Sprint 012.)
+- **Goal:** Capture an approved decision as a durable, auditable Action Job — the safe boundary between approval and future Facebook writes — without executing anything.
+- **Deliverables:** `action_jobs` + `action_events` (migration `0009`); modules ActionIntentBuilder (pure), ActionPolicyGuard (pure; ALLOW/BLOCK/REJECT), ActionQueue (state machine), ActionRepository (only DB boundary), ActionCoordinator; only-APPROVED gating; one active job per (review, action type); immutable intent; bounded retries; kill-switch/write-flag/engine-flag enforcement (all default to blocked); API, UI, CLI; 9 audit events. See [59-action-queue-engine.md](59-action-queue-engine.md), [ADR-020](adr/ADR-020-action-queue-boundary.md)–[ADR-022](adr/ADR-022-action-execution-disabled-by-default.md).
+- **Exclusions:** No Facebook comment/message execution, Playwright write, Facebook write, Action Worker/Adapter, Telegram sending, auto-approval, unbounded retries, billing, subscription, teams.
+- **Exit criteria:** Only APPROVED reviews create jobs; intent is immutable; execution disabled by default (jobs blocked); state machine enforced; retries bounded; nothing is posted; fully auditable and workspace-isolated. **Met.**
+- **Main risks:** Accidental post, acting on unapproved content, duplicates, infinite retries. Mitigated by the absence of any executor, only-APPROVED gating with immutable content, one-active-job dedup, bounded retries, and multi-gate blocking ([ADR-022](adr/ADR-022-action-execution-disabled-by-default.md)).
+
+> **Note:** the deterministic **Action Queue** boundary took Sprint 011, so **Playwright Comment Execution** becomes Sprint 012, and every subsequent sprint below shifts by one.
+
+## Sprint 012 — Playwright Comment Execution
+
+- **Goal:** Publish approved (queued) Action Jobs to Facebook, verified and evidenced — the first Facebook writes, behind the Sprint 011 boundary.
 - **Deliverables:** Comment Executor at concurrency one; direct post navigation; publish approved text; verification; screenshot capture; idempotency (one success per business-and-post); bounded retries after confirmed technical failure; error classification; kill-switch enforcement; success/failure notifications; audit events.
 - **Exclusions:** No auto-commenting; no concurrency beyond one; no multi-account.
 - **Exit criteria:** Approved comments are reliably published, verified, and screenshotted; the kill switch halts new writes; idempotency and retry rules hold; failures are surfaced.
 - **Main risks:** Unintended or duplicate posts; checkpoints. Mitigated by verification, idempotency, kill switch, and never bypassing CAPTCHAs.
 
-## Sprint 012 — History, Audit, Screenshot, and Stabilisation
+## Sprint 013 — History, Audit, Screenshot, and Stabilisation
 
 - **Goal:** Make the whole loop trustworthy, complete, and stable.
 - **Deliverables:** Approval History UI; complete, consistent audit trail; screenshot viewing; session-expiry recovery flow; System Status and kill-switch screen; resource and stability hardening within the VPS budget; consistency checks (e.g. no "success" without a screenshot).
@@ -126,7 +137,7 @@ Scope is bounded by [02-product-scope.md](02-product-scope.md) and [not-doing.md
 - **Exit criteria:** History and audit are complete and accurate; recovery and kill-switch flows work; the system is stable within 2 cores/3.8 GiB under pilot load.
 - **Main risks:** Hidden inconsistencies in history. Mitigated by explicit consistency checks and the no-silent-failure rule.
 
-## Sprint 013 — Pilot Release
+## Sprint 014 — Pilot Release
 
 - **Goal:** Onboard the first real pilot customer end to end.
 - **Deliverables:** Pilot onboarding materials; operator runbook (session recovery, checkpoints, kill switch); monitoring of health within budget; a defined feedback loop; go/no-go checklist against [02-product-scope.md](02-product-scope.md)'s pilot-readiness criteria.

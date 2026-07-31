@@ -289,6 +289,48 @@ export interface ReviewEvent {
   createdAt: string;
 }
 
+export type ActionStatus =
+  'queued' | 'blocked' | 'processing' | 'succeeded' | 'failed' | 'cancelled';
+
+export interface ActionJob {
+  id: string;
+  reviewTaskId: string;
+  aiDraftId: string;
+  businessMatchId: string;
+  actionType: string;
+  status: ActionStatus;
+  targetPlatform: string;
+  targetUrl: string;
+  approvedContent: string;
+  attemptCount: number;
+  maxAttempts: number;
+  lastErrorCode: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ActionStatistics {
+  total: number;
+  queued: number;
+  blocked: number;
+  processing: number;
+  succeeded: number;
+  failed: number;
+  cancelled: number;
+}
+
+export interface ActionPolicy {
+  outcome: 'ALLOW' | 'BLOCK' | 'REJECT';
+  reasons: { code: string; detail: string }[];
+}
+
+export interface ActionEvent {
+  id: string;
+  event: string;
+  payload: Record<string, unknown> | null;
+  createdAt: string;
+}
+
 export class ApiRequestError extends Error {
   code?: string;
   status: number;
@@ -606,5 +648,39 @@ export const api = {
     request<{ review: ReviewTask }>(`/reviews/${id}/edit`, {
       method: 'POST',
       body: JSON.stringify({ editedContent }),
+    }),
+
+  // ── Action Queue (SPRINT 011) — safe boundary; NEVER executes Facebook ─────
+  createAction: (reviewTaskId: string, actionType = 'facebook_comment') =>
+    request<{ action: ActionJob; policy: ActionPolicy }>('/actions', {
+      method: 'POST',
+      body: JSON.stringify({ reviewTaskId, actionType }),
+    }),
+  listActions: (filter?: { status?: string; reviewTaskId?: string }) => {
+    const q = new URLSearchParams();
+    if (filter?.status) q.set('status', filter.status);
+    if (filter?.reviewTaskId) q.set('reviewTaskId', filter.reviewTaskId);
+    const qs = q.toString();
+    return request<{ actions: ActionJob[]; statistics: ActionStatistics }>(
+      `/actions${qs ? `?${qs}` : ''}`,
+      { method: 'GET' },
+    );
+  },
+  getAction: (id: string) =>
+    request<{
+      action: ActionJob;
+      review: { id: string; status: string; draftId: string } | null;
+      draft: { id: string; version: number; status: string } | null;
+      match: { id: string; decision: string; businessId: string } | null;
+      policyReasons: { code: string; detail: string }[];
+      events: ActionEvent[];
+    }>(`/actions/${id}`, { method: 'GET' }),
+  cancelAction: (id: string) =>
+    request<{ action: ActionJob }>(`/actions/${id}/cancel`, { method: 'POST' }),
+  retryAction: (id: string) =>
+    request<{ action: ActionJob }>(`/actions/${id}/retry`, { method: 'POST' }),
+  recheckActionPolicy: (id: string) =>
+    request<{ action: ActionJob; policy: ActionPolicy }>(`/actions/${id}/recheck-policy`, {
+      method: 'POST',
     }),
 };

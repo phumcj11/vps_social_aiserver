@@ -8,6 +8,7 @@ import {
   type ReviewTask,
   type ReviewEvent,
   type ReviewPresentation,
+  type ActionJob,
 } from '../../../../lib/api';
 import { Nav } from '../../../../components/Nav';
 
@@ -48,6 +49,8 @@ export default function ReviewDetailPage() {
   const [opportunity, setOpportunity] = useState<OppView | null>(null);
   const [presentation, setPresentation] = useState<ReviewPresentation | null>(null);
   const [events, setEvents] = useState<ReviewEvent[]>([]);
+  const [actionJob, setActionJob] = useState<ActionJob | null>(null);
+  const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [editText, setEditText] = useState('');
@@ -62,6 +65,26 @@ export default function ReviewDetailPage() {
     setPresentation(res.presentation);
     setEvents(res.events);
     setEditText(res.review.editedContent ?? res.draft?.content ?? '');
+    // Show an existing Action Job for this review, if any.
+    try {
+      const list = await api.listActions({ reviewTaskId: id });
+      setActionJob(list.actions[0] ?? null);
+    } catch {
+      setActionJob(null);
+    }
+  }
+
+  async function createAction() {
+    setActionMsg(null);
+    setBusy(true);
+    try {
+      await api.createAction(id);
+      await load();
+    } catch (err) {
+      setActionMsg(err instanceof ApiRequestError ? err.message : 'Could not create action.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -150,6 +173,36 @@ export default function ReviewDetailPage() {
           <p style={{ color: '#666' }}>This review is closed.</p>
         )}
       </section>
+
+      {review.status === 'APPROVED' && (
+        <section style={{ marginBottom: '1.25rem' }}>
+          <h2>Action</h2>
+          <p
+            style={{
+              background: '#fff8e1',
+              border: '1px solid #f0d58c',
+              padding: '0.5rem 0.75rem',
+              borderRadius: 4,
+              color: '#5c4500',
+            }}
+          >
+            This action has not been executed on Facebook.
+          </p>
+          {actionMsg && <p style={{ color: '#b00020' }}>{actionMsg}</p>}
+          {actionJob ? (
+            <p>
+              Action Job:{' '}
+              <a href={`/settings/actions/${actionJob.id}`}>
+                {actionJob.actionType} — <strong>{actionJob.status}</strong>
+              </a>
+            </p>
+          ) : (
+            <button type="button" disabled={busy} onClick={createAction}>
+              {busy ? 'Creating…' : 'Create Action Job'}
+            </button>
+          )}
+        </section>
+      )}
 
       <section style={{ marginBottom: '1.25rem' }}>
         <h2>Business</h2>

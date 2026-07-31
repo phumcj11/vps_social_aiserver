@@ -35,6 +35,10 @@ import { ReviewRepository } from './review/repository';
 import { ReviewQueue } from './review/queue';
 import { ReviewCoordinator } from './review/coordinator';
 import { TelegramReviewAdapter, selectTelegramTransport } from './review/telegram-adapter';
+import { registerActionRoutes } from './action/routes';
+import { ActionRepository } from './action/repository';
+import { ActionQueue } from './action/queue';
+import { ActionCoordinator } from './action/coordinator';
 
 export interface ServerDeps {
   store: Store;
@@ -173,6 +177,13 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     env,
     logger,
   });
+  const actionRepo = new ActionRepository(store);
+  const actions = new ActionCoordinator({
+    repo: actionRepo,
+    queue: new ActionQueue(actionRepo),
+    env,
+    logger,
+  });
 
   // Feature routes.
   registerAuthRoutes(app, { store, env, logger, audit });
@@ -185,6 +196,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   registerMatchingRoutes(app, { store, env, matching });
   registerAiDraftRoutes(app, { store, env, aiDrafts });
   registerReviewRoutes(app, { store, env, reviews });
+  registerActionRoutes(app, { store, env, actions });
 
   return app;
 }

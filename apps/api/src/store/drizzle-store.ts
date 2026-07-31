@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, isNull } from 'drizzle-orm';
+import { eq, and, desc, sql, isNull, inArray } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import {
   users,
@@ -23,6 +23,8 @@ import {
   aiDraftEvents,
   reviewTasks,
   reviewEvents,
+  actionJobs,
+  actionEvents,
 } from '../db/schema';
 import type {
   Store,
@@ -93,7 +95,17 @@ import type {
   ReviewTaskFilter,
   ReviewEventRecord,
   CreateReviewEventInput,
+  ActionJobRecord,
+  ActionType,
+  ActionStatus,
+  TargetPlatform,
+  CreateActionJobInput,
+  UpdateActionJobInput,
+  ActionJobFilter,
+  ActionEventRecord,
+  CreateActionEventInput,
 } from './types';
+import { ACTIVE_ACTION_STATUSES } from './types';
 
 /** Parse a JSON-encoded string array column, tolerating null/invalid. */
 function parseStringArray(value: string | null): string[] {
@@ -1685,6 +1697,145 @@ export class DrizzleStore implements Store {
     return {
       id: row.id,
       reviewTaskId: row.reviewTaskId,
+      event: row.event,
+      payload: this.parseJsonObject(row.payload),
+      createdAt: row.createdAt,
+    };
+  }
+
+  // ── Action jobs (SPRINT 011) ───────────────────────────────────────────────
+
+  async createActionJob(input: CreateActionJobInput): Promise<ActionJobRecord> {
+    await this.db.insert(actionJobs).values({
+      id: input.id,
+      workspaceId: input.workspaceId,
+      reviewTaskId: input.reviewTaskId,
+      aiDraftId: input.aiDraftId,
+      businessMatchId: input.businessMatchId,
+      actionType: input.actionType,
+      status: input.status,
+      targetPlatform: input.targetPlatform,
+      targetUrl: input.targetUrl,
+      approvedContent: input.approvedContent,
+      maxAttempts: input.maxAttempts,
+      blockedAt: input.blockedAt,
+    });
+    const created = await this.getActionJobById(input.id);
+    if (!created) throw new Error('action job creation failed');
+    return created;
+  }
+
+  async getActionJobById(id: string): Promise<ActionJobRecord | null> {
+    const rows = await this.db.select().from(actionJobs).where(eq(actionJobs.id, id)).limit(1);
+    return rows[0] ? this.toActionJob(rows[0]) : null;
+  }
+
+  async listActionJobsByWorkspace(
+    workspaceId: string,
+    filter: ActionJobFilter = {},
+  ): Promise<ActionJobRecord[]> {
+    const conds = [eq(actionJobs.workspaceId, workspaceId)];
+    if (filter.status) conds.push(eq(actionJobs.status, filter.status));
+    if (filter.reviewTaskId) conds.push(eq(actionJobs.reviewTaskId, filter.reviewTaskId));
+    if (filter.actionType) conds.push(eq(actionJobs.actionType, filter.actionType));
+    const rows = await this.db
+      .select()
+      .from(actionJobs)
+      .where(and(...conds))
+      .orderBy(desc(actionJobs.createdAt))
+      .limit(filter.limit ?? 500);
+    return rows.map((r) => this.toActionJob(r));
+  }
+
+  async listActiveActionJobsForReview(
+    reviewTaskId: string,
+    actionType: ActionType,
+  ): Promise<ActionJobRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(actionJobs)
+      .where(
+        and(
+          eq(actionJobs.reviewTaskId, reviewTaskId),
+          eq(actionJobs.actionType, actionType),
+          inArray(actionJobs.status, ACTIVE_ACTION_STATUSES),
+        ),
+      );
+    return rows.map((r) => this.toActionJob(r));
+  }
+
+  async updateActionJob(id: string, input: UpdateActionJobInput): Promise<ActionJobRecord | null> {
+    const set: Partial<typeof actionJobs.$inferInsert> = {};
+    if (input.status !== undefined) set.status = input.status;
+    if (input.attemptCount !== undefined) set.attemptCount = input.attemptCount;
+    if (input.scheduledAt !== undefined) set.scheduledAt = input.scheduledAt;
+    if (input.startedAt !== undefined) set.startedAt = input.startedAt;
+    if (input.completedAt !== undefined) set.completedAt = input.completedAt;
+    if (input.cancelledAt !== undefined) set.cancelledAt = input.cancelledAt;
+    if (input.blockedAt !== undefined) set.blockedAt = input.blockedAt;
+    if (input.lastErrorCode !== undefined) set.lastErrorCode = input.lastErrorCode;
+    if (input.lastErrorMessage !== undefined) set.lastErrorMessage = input.lastErrorMessage;
+    if (Object.keys(set).length > 0) {
+      await this.db.update(actionJobs).set(set).where(eq(actionJobs.id, id));
+    }
+    return this.getActionJobById(id);
+  }
+
+  async createActionEvent(input: CreateActionEventInput): Promise<ActionEventRecord> {
+    await this.db.insert(actionEvents).values({
+      id: input.id,
+      actionJobId: input.actionJobId,
+      event: input.event,
+      payload: input.payload ? JSON.stringify(input.payload) : null,
+    });
+    return {
+      id: input.id,
+      actionJobId: input.actionJobId,
+      event: input.event,
+      payload: input.payload,
+      createdAt: new Date(),
+    };
+  }
+
+  async listActionEvents(actionJobId: string): Promise<ActionEventRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(actionEvents)
+      .where(eq(actionEvents.actionJobId, actionJobId))
+      .orderBy(actionEvents.createdAt);
+    return rows.map((r) => this.toActionEvent(r));
+  }
+
+  private toActionJob(row: typeof actionJobs.$inferSelect): ActionJobRecord {
+    return {
+      id: row.id,
+      workspaceId: row.workspaceId,
+      reviewTaskId: row.reviewTaskId,
+      aiDraftId: row.aiDraftId,
+      businessMatchId: row.businessMatchId,
+      actionType: row.actionType as ActionType,
+      status: row.status as ActionStatus,
+      targetPlatform: row.targetPlatform as TargetPlatform,
+      targetUrl: row.targetUrl,
+      approvedContent: row.approvedContent,
+      attemptCount: row.attemptCount,
+      maxAttempts: row.maxAttempts,
+      scheduledAt: row.scheduledAt,
+      startedAt: row.startedAt,
+      completedAt: row.completedAt,
+      cancelledAt: row.cancelledAt,
+      blockedAt: row.blockedAt,
+      lastErrorCode: row.lastErrorCode,
+      lastErrorMessage: row.lastErrorMessage,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  private toActionEvent(row: typeof actionEvents.$inferSelect): ActionEventRecord {
+    return {
+      id: row.id,
+      actionJobId: row.actionJobId,
       event: row.event,
       payload: this.parseJsonObject(row.payload),
       createdAt: row.createdAt,

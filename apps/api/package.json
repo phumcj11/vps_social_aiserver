@@ -27,7 +27,13 @@
     "ai-draft:generate": "tsx src/ai/cli.ts generate",
     "ai-draft:list": "tsx src/ai/cli.ts list",
     "ai-draft:show": "tsx src/ai/cli.ts show",
-    "ai-draft:regenerate": "tsx src/ai/cli.ts regenerate"
+    "ai-draft:regenerate": "tsx src/ai/cli.ts regenerate",
+    "action:create": "tsx src/action/cli.ts create",
+    "action:list": "tsx src/action/cli.ts list",
+    "action:show": "tsx src/action/cli.ts show",
+    "action:cancel": "tsx src/action/cli.ts cancel",
+    "action:retry": "tsx src/action/cli.ts retry",
+    "action:recheck": "tsx src/action/cli.ts recheck"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",

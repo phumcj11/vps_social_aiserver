@@ -726,3 +726,84 @@ export const reviewEvents = mysqlTable(
 
 export type ReviewTaskRow = typeof reviewTasks.$inferSelect;
 export type ReviewEventRow = typeof reviewEvents.$inferSelect;
+
+/**
+ * ── SPRINT 011: Action Queue Engine ──────────────────────────────────────────
+ *
+ * A SAFE BOUNDARY between an approved Human Review decision and future platform
+ * execution. This sprint does **NOT** execute Facebook actions and runs **NO**
+ * Action Worker. Only an APPROVED Review Task may create an Action Job; the job
+ * captures the approved (or edited) content and target immutably. Execution is
+ * disabled by default and Facebook writes stay disabled and the global kill
+ * switch stays on, so every job is created **BLOCKED** under current defaults.
+ *
+ * The row holds NO credentials, NO browser profile path, NO cookies. There is
+ * NO screenshot table and NO Facebook comment-result table this sprint.
+ */
+export const actionJobs = mysqlTable(
+  'action_jobs',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    workspaceId: varchar('workspace_id', { length: 36 })
+      .notNull()
+      .references(() => workspaces.id),
+    reviewTaskId: varchar('review_task_id', { length: 36 })
+      .notNull()
+      .references(() => reviewTasks.id),
+    aiDraftId: varchar('ai_draft_id', { length: 36 })
+      .notNull()
+      .references(() => aiDrafts.id),
+    businessMatchId: varchar('business_match_id', { length: 36 })
+      .notNull()
+      .references(() => businessMatches.id),
+    // facebook_comment | facebook_message (only facebook_comment selectable in MVP UI).
+    actionType: varchar('action_type', { length: 40 }).notNull(),
+    // queued | blocked | processing | succeeded | failed | cancelled
+    status: varchar('status', { length: 20 }).notNull().default('blocked'),
+    // Fixed to 'facebook' for the MVP.
+    targetPlatform: varchar('target_platform', { length: 20 }).notNull().default('facebook'),
+    targetUrl: varchar('target_url', { length: 700 }).notNull(),
+    // Immutable after creation — the approved (or edited) review content.
+    approvedContent: text('approved_content').notNull(),
+    attemptCount: int('attempt_count').notNull().default(0),
+    maxAttempts: int('max_attempts').notNull().default(3),
+    scheduledAt: datetime('scheduled_at'),
+    startedAt: datetime('started_at'),
+    completedAt: datetime('completed_at'),
+    cancelledAt: datetime('cancelled_at'),
+    blockedAt: datetime('blocked_at'),
+    lastErrorCode: varchar('last_error_code', { length: 40 }),
+    lastErrorMessage: varchar('last_error_message', { length: 500 }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => ({
+    // At most one ACTIVE job per (review_task, action_type) is enforced in the
+    // repository (active = queued|blocked|processing); this index supports it.
+    reviewTypeIdx: index('action_jobs_review_type_idx').on(table.reviewTaskId, table.actionType),
+    workspaceIdx: index('action_jobs_workspace_idx').on(table.workspaceId),
+    statusIdx: index('action_jobs_status_idx').on(table.workspaceId, table.status),
+  }),
+);
+
+/** Append-only lifecycle events for an Action Job (safe payloads only). */
+export const actionEvents = mysqlTable(
+  'action_events',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    actionJobId: varchar('action_job_id', { length: 36 })
+      .notNull()
+      .references(() => actionJobs.id),
+    event: varchar('event', { length: 60 }).notNull(),
+    // JSON-encoded safe payload (status, reasons, attempt). No cookies, tokens,
+    // credentials, browser profile paths, raw HTML, private keys, or AI secrets.
+    payload: text('payload'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    jobIdx: index('action_events_job_idx').on(table.actionJobId),
+  }),
+);
+
+export type ActionJobRow = typeof actionJobs.$inferSelect;
+export type ActionEventRow = typeof actionEvents.$inferSelect;

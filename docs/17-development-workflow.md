@@ -112,11 +112,20 @@ pnpm ai-draft:generate   --workspace <uuid> --business-match <uuid>
 pnpm ai-draft:list       --workspace <uuid> --business-match <uuid>
 pnpm ai-draft:show       --workspace <uuid> --draft <uuid>
 pnpm ai-draft:regenerate --workspace <uuid> --draft <uuid>
+# Action Queue (SPRINT 011, SAFE BOUNDARY — never executes Facebook)
+pnpm action:create   --workspace <uuid> --review <uuid> --type facebook_comment
+pnpm action:list     --workspace <uuid>
+pnpm action:show     --workspace <uuid> --action <uuid>
+pnpm action:cancel   --workspace <uuid> --action <uuid>
+pnpm action:retry    --workspace <uuid> --action <uuid>
+pnpm action:recheck  --workspace <uuid> --action <uuid>
 ```
 
 The `facebook:*` and `facebook:group:*` commands are operator commands: they validate UUIDs, reject unsafe URLs, enforce workspace ownership, run at concurrency one, never print credentials/cookies/absolute profile paths/raw HTML, and never scan or comment. See [29-facebook-connection-runbook.md](29-facebook-connection-runbook.md) and [30-facebook-groups.md](30-facebook-groups.md).
 
 The `ai-draft:*` commands (SPRINT 009) validate UUIDs, enforce workspace ownership, use the deterministic **Mock** provider unless AI is explicitly configured otherwise (a real provider refuses while `AI_ENABLED=false`), and produce **drafts only** — they never approve, never send Telegram, never call Facebook, and never print secrets or hidden prompt internals. They return useful exit codes. See [48-ai-draft-engine.md](48-ai-draft-engine.md).
+
+The `action:*` commands (SPRINT 011) validate UUIDs, enforce workspace scope, and operate the Action Queue **safe boundary** — they **never execute Facebook**, never run a worker, never print secrets or profile paths, and return useful exit codes. Under current defaults every job is **blocked**. See [63-action-queue-runbook.md](63-action-queue-runbook.md).
 
 ---
 
