@@ -22,7 +22,8 @@
     "facebook:group:list": "tsx src/facebook/group-cli.ts list",
     "facebook:group:validate": "tsx src/facebook/group-cli.ts validate",
     "facebook:group:assign": "tsx src/facebook/group-cli.ts assign",
-    "facebook:group:unassign": "tsx src/facebook/group-cli.ts unassign"
+    "facebook:group:unassign": "tsx src/facebook/group-cli.ts unassign",
+    "collector:run": "tsx src/collector/cli.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",

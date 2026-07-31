@@ -1,14 +1,17 @@
 /**
- * Facebook Group Scanner worker — DISABLED PLACEHOLDER (SPRINT 001).
+ * Collector Worker (formerly "Scanner") — thin worker entrypoint.
  *
- * The scanner is the READ-ONLY half of the Facebook adapter
- * (docs/10-playwright-design.md). It is NOT implemented in this sprint:
- *   - It does NOT import or execute Playwright.
- *   - It performs NO Facebook login, navigation, reading, or writing.
- *   - It exits immediately and safely with a clear message.
+ * The Collector Engine itself lives in the backend (apps/api/src/collector/*),
+ * so the worker delegates rather than re-implementing the pipeline. It performs
+ * ONLY read-only collection and is gated by FACEBOOK_READER_ENABLED (default
+ * off → no browser). It NEVER comments, messages, likes, shares, joins, or
+ * writes to Facebook.
  *
- * It will only ever perform read actions (never comments), at concurrency one,
- * gated by FACEBOOK_READER_ENABLED, when implemented in a later sprint.
+ * To run a real collection, use the operator command:
+ *   pnpm collector:run --workspace <workspace-id>
+ *
+ * This process is a disabled placeholder by default: it prints its status and
+ * exits, importing no Playwright and contacting nothing.
  */
 
 function main(): void {
@@ -16,15 +19,16 @@ function main(): void {
 
   console.log(
     JSON.stringify({
-      worker: 'facebook-scanner',
-      status: 'disabled',
-      reason: 'Not implemented in SPRINT 001 (Technical Bootstrap).',
+      worker: 'collector',
+      status: 'idle',
+      readOnly: true,
       facebookReaderEnabled: readerEnabled,
-      note: 'This placeholder does not import or execute Playwright. Exiting safely.',
+      note:
+        'Collector Worker placeholder. Read-only. Never comments/likes/shares/joins/writes. ' +
+        'Run a collection with `pnpm collector:run --workspace <id>`. Exiting safely.',
     }),
   );
 
-  // Exit cleanly (success) without doing any work.
   process.exit(0);
 }
 

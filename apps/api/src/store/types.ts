@@ -290,6 +290,106 @@ export interface CreateGroupAssignmentInput {
   facebookGroupId: string;
 }
 
+// ── Collector Engine (SPRINT 006) ────────────────────────────────────────────
+
+export interface RawSignalRecord {
+  id: string;
+  workspaceId: string;
+  groupId: string;
+  facebookPostId: string | null;
+  postUrl: string;
+  rawHtml: string | null;
+  rawJson: string | null;
+  contentHash: string;
+  collectedAt: Date;
+}
+
+export interface CreateRawSignalInput {
+  id: string;
+  workspaceId: string;
+  groupId: string;
+  facebookPostId: string | null;
+  postUrl: string;
+  rawHtml: string | null;
+  rawJson: string | null;
+  contentHash: string;
+}
+
+export interface SignalRecord {
+  id: string;
+  workspaceId: string;
+  groupId: string;
+  facebookPostId: string | null;
+  postUrl: string;
+  authorName: string | null;
+  authorProfile: string | null;
+  message: string | null;
+  mediaUrls: string[];
+  createdTime: Date | null;
+  normalizedHash: string;
+  normalizedAt: Date;
+}
+
+export interface CreateSignalInput {
+  id: string;
+  workspaceId: string;
+  groupId: string;
+  facebookPostId: string | null;
+  postUrl: string;
+  authorName: string | null;
+  authorProfile: string | null;
+  message: string | null;
+  mediaUrls: string[];
+  createdTime: Date | null;
+  normalizedHash: string;
+}
+
+export interface CollectorCheckpointRecord {
+  id: string;
+  workspaceId: string;
+  groupId: string;
+  lastPostId: string | null;
+  lastPostUrl: string | null;
+  lastScan: Date | null;
+  lastCursor: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface UpsertCheckpointInput {
+  id: string;
+  workspaceId: string;
+  groupId: string;
+  lastPostId: string | null;
+  lastPostUrl: string | null;
+  lastScan: Date | null;
+  lastCursor: string | null;
+}
+
+export type CollectorRunStatus = 'idle' | 'running' | 'paused' | 'completed' | 'failed';
+
+export interface CollectorRunRecord {
+  id: string;
+  workspaceId: string;
+  status: CollectorRunStatus;
+  startedAt: Date;
+  finishedAt: Date | null;
+  groupsProcessed: number;
+  postsCollected: number;
+  errors: number;
+  errorSummary: string | null;
+  createdAt: Date;
+}
+
+export interface UpdateCollectorRunInput {
+  status?: CollectorRunStatus;
+  finishedAt?: Date | null;
+  groupsProcessed?: number;
+  postsCollected?: number;
+  errors?: number;
+  errorSummary?: string | null;
+}
+
 export interface Store {
   // Users
   createUser(input: CreateUserInput): Promise<UserRecord>;
@@ -395,4 +495,29 @@ export interface Store {
   unassignGroupFromBusiness(businessId: string, facebookGroupId: string): Promise<void>;
   listBusinessesForGroup(groupId: string): Promise<BusinessRecord[]>;
   listGroupsForBusiness(businessId: string): Promise<FacebookGroupRecord[]>;
+
+  // Collector — raw signals (immutable)
+  createRawSignal(input: CreateRawSignalInput): Promise<RawSignalRecord>;
+  rawSignalExistsByUrl(workspaceId: string, postUrl: string): Promise<boolean>;
+
+  // Collector — normalized signals (duplicate detection: url → fb id → hash)
+  createSignal(input: CreateSignalInput): Promise<SignalRecord>;
+  signalExistsByUrl(workspaceId: string, postUrl: string): Promise<boolean>;
+  signalExistsByFacebookPostId(workspaceId: string, facebookPostId: string): Promise<boolean>;
+  signalExistsByHash(workspaceId: string, normalizedHash: string): Promise<boolean>;
+  countSignalsByWorkspace(workspaceId: string): Promise<number>;
+
+  // Collector — checkpoints
+  getCheckpointByGroup(groupId: string): Promise<CollectorCheckpointRecord | null>;
+  upsertCheckpoint(input: UpsertCheckpointInput): Promise<CollectorCheckpointRecord>;
+
+  // Collector — runs
+  createCollectorRun(id: string, workspaceId: string): Promise<CollectorRunRecord>;
+  updateCollectorRun(
+    id: string,
+    input: UpdateCollectorRunInput,
+  ): Promise<CollectorRunRecord | null>;
+  getCollectorRunById(id: string): Promise<CollectorRunRecord | null>;
+  getLatestCollectorRun(workspaceId: string): Promise<CollectorRunRecord | null>;
+  listCollectorRuns(workspaceId: string, limit?: number): Promise<CollectorRunRecord[]>;
 }

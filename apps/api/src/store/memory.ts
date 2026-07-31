@@ -32,6 +32,14 @@ import type {
   GroupAccessUpdate,
   BusinessGroupAssignmentRecord,
   CreateGroupAssignmentInput,
+  RawSignalRecord,
+  CreateRawSignalInput,
+  SignalRecord,
+  CreateSignalInput,
+  CollectorCheckpointRecord,
+  UpsertCheckpointInput,
+  CollectorRunRecord,
+  UpdateCollectorRunInput,
 } from './types';
 
 /**
@@ -51,6 +59,10 @@ export class InMemoryStore implements Store {
   private auditEvents: AuditEventRecord[] = [];
   private facebookGroups = new Map<string, FacebookGroupRecord>(); // keyed by id
   private groupAssignments = new Map<string, BusinessGroupAssignmentRecord>(); // keyed by id
+  private rawSignals = new Map<string, RawSignalRecord>(); // keyed by id
+  private signals = new Map<string, SignalRecord>(); // keyed by id
+  private checkpoints = new Map<string, CollectorCheckpointRecord>(); // keyed by groupId
+  private collectorRuns = new Map<string, CollectorRunRecord>(); // keyed by id
 
   private now(): Date {
     return new Date();
@@ -642,5 +654,171 @@ export class InMemoryStore implements Store {
       .map((id) => this.facebookGroups.get(id))
       .filter((g): g is FacebookGroupRecord => g !== undefined)
       .map((g) => ({ ...g }));
+  }
+
+  // ── Collector: raw signals ─────────────────────────────────────────────────
+
+  async createRawSignal(input: CreateRawSignalInput): Promise<RawSignalRecord> {
+    for (const r of this.rawSignals.values()) {
+      if (r.workspaceId === input.workspaceId && r.postUrl === input.postUrl) {
+        throw new Error('duplicate raw signal url');
+      }
+    }
+    const record: RawSignalRecord = {
+      id: input.id,
+      workspaceId: input.workspaceId,
+      groupId: input.groupId,
+      facebookPostId: input.facebookPostId,
+      postUrl: input.postUrl,
+      rawHtml: input.rawHtml,
+      rawJson: input.rawJson,
+      contentHash: input.contentHash,
+      collectedAt: this.now(),
+    };
+    this.rawSignals.set(record.id, record);
+    return { ...record };
+  }
+
+  async rawSignalExistsByUrl(workspaceId: string, postUrl: string): Promise<boolean> {
+    for (const r of this.rawSignals.values()) {
+      if (r.workspaceId === workspaceId && r.postUrl === postUrl) return true;
+    }
+    return false;
+  }
+
+  // ── Collector: normalized signals ──────────────────────────────────────────
+
+  async createSignal(input: CreateSignalInput): Promise<SignalRecord> {
+    for (const s of this.signals.values()) {
+      if (s.workspaceId === input.workspaceId && s.postUrl === input.postUrl) {
+        throw new Error('duplicate signal url');
+      }
+    }
+    const record: SignalRecord = {
+      id: input.id,
+      workspaceId: input.workspaceId,
+      groupId: input.groupId,
+      facebookPostId: input.facebookPostId,
+      postUrl: input.postUrl,
+      authorName: input.authorName,
+      authorProfile: input.authorProfile,
+      message: input.message,
+      mediaUrls: [...input.mediaUrls],
+      createdTime: input.createdTime,
+      normalizedHash: input.normalizedHash,
+      normalizedAt: this.now(),
+    };
+    this.signals.set(record.id, record);
+    return { ...record };
+  }
+
+  async signalExistsByUrl(workspaceId: string, postUrl: string): Promise<boolean> {
+    for (const s of this.signals.values()) {
+      if (s.workspaceId === workspaceId && s.postUrl === postUrl) return true;
+    }
+    return false;
+  }
+
+  async signalExistsByFacebookPostId(
+    workspaceId: string,
+    facebookPostId: string,
+  ): Promise<boolean> {
+    for (const s of this.signals.values()) {
+      if (s.workspaceId === workspaceId && s.facebookPostId === facebookPostId) return true;
+    }
+    return false;
+  }
+
+  async signalExistsByHash(workspaceId: string, normalizedHash: string): Promise<boolean> {
+    for (const s of this.signals.values()) {
+      if (s.workspaceId === workspaceId && s.normalizedHash === normalizedHash) return true;
+    }
+    return false;
+  }
+
+  async countSignalsByWorkspace(workspaceId: string): Promise<number> {
+    let n = 0;
+    for (const s of this.signals.values()) if (s.workspaceId === workspaceId) n += 1;
+    return n;
+  }
+
+  // ── Collector: checkpoints ─────────────────────────────────────────────────
+
+  async getCheckpointByGroup(groupId: string): Promise<CollectorCheckpointRecord | null> {
+    const c = this.checkpoints.get(groupId);
+    return c ? { ...c } : null;
+  }
+
+  async upsertCheckpoint(input: UpsertCheckpointInput): Promise<CollectorCheckpointRecord> {
+    const now = this.now();
+    const existing = this.checkpoints.get(input.groupId);
+    const record: CollectorCheckpointRecord = {
+      id: existing?.id ?? input.id,
+      workspaceId: input.workspaceId,
+      groupId: input.groupId,
+      lastPostId: input.lastPostId,
+      lastPostUrl: input.lastPostUrl,
+      lastScan: input.lastScan,
+      lastCursor: input.lastCursor,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    this.checkpoints.set(input.groupId, record);
+    return { ...record };
+  }
+
+  // ── Collector: runs ────────────────────────────────────────────────────────
+
+  async createCollectorRun(id: string, workspaceId: string): Promise<CollectorRunRecord> {
+    const now = this.now();
+    const record: CollectorRunRecord = {
+      id,
+      workspaceId,
+      status: 'running',
+      startedAt: now,
+      finishedAt: null,
+      groupsProcessed: 0,
+      postsCollected: 0,
+      errors: 0,
+      errorSummary: null,
+      createdAt: now,
+    };
+    this.collectorRuns.set(id, record);
+    return { ...record };
+  }
+
+  async updateCollectorRun(
+    id: string,
+    input: UpdateCollectorRunInput,
+  ): Promise<CollectorRunRecord | null> {
+    const r = this.collectorRuns.get(id);
+    if (!r) return null;
+    if (input.status !== undefined) r.status = input.status;
+    if (input.finishedAt !== undefined) r.finishedAt = input.finishedAt;
+    if (input.groupsProcessed !== undefined) r.groupsProcessed = input.groupsProcessed;
+    if (input.postsCollected !== undefined) r.postsCollected = input.postsCollected;
+    if (input.errors !== undefined) r.errors = input.errors;
+    if (input.errorSummary !== undefined) r.errorSummary = input.errorSummary;
+    return { ...r };
+  }
+
+  async getCollectorRunById(id: string): Promise<CollectorRunRecord | null> {
+    const r = this.collectorRuns.get(id);
+    return r ? { ...r } : null;
+  }
+
+  async getLatestCollectorRun(workspaceId: string): Promise<CollectorRunRecord | null> {
+    const runs = [...this.collectorRuns.values()]
+      .filter((r) => r.workspaceId === workspaceId)
+      .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
+    return runs[0] ? { ...runs[0] } : null;
+  }
+
+  async listCollectorRuns(workspaceId: string, limit = 50): Promise<CollectorRunRecord[]> {
+    return [...this.collectorRuns.values()]
+      .filter((r) => r.workspaceId === workspaceId)
+      .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
+      .slice(0, limit)
+      .map((r) => ({ ...r }));
   }
 }

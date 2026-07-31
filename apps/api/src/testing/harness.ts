@@ -7,11 +7,14 @@ import { loadApiEnv } from '../lib/env';
 import { createLogger } from '../lib/logger';
 import { InMemoryStore } from '../store/memory';
 import type { BrowserDriver } from '../facebook/driver';
+import type { CollectorBrowser } from '../collector/browser';
 
 export interface TestAppOptions {
   facebookDriver?: BrowserDriver;
   facebookLoginEnabled?: boolean;
   profileRoot?: string;
+  collectorBrowser?: CollectorBrowser;
+  facebookReaderEnabled?: boolean;
 }
 
 /** Build an isolated test app backed by an in-memory store (no MySQL). */
@@ -31,12 +34,17 @@ export async function makeTestApp(
     FACEBOOK_LOGIN_ENABLED: opts.facebookLoginEnabled ? 'true' : 'false',
     FACEBOOK_CONNECT_TIMEOUT_MS: '2000',
     FACEBOOK_VALIDATE_TIMEOUT_MS: '2000',
+    FACEBOOK_READER_ENABLED: opts.facebookReaderEnabled ? 'true' : 'false',
+    COLLECTOR_MAX_SCROLLS: '2',
+    COLLECTOR_MAX_POSTS_PER_GROUP: '30',
+    COLLECTOR_TIMEOUT_MS: '3000',
   });
   const app = await buildServer({
     store,
     env,
     logger: createLogger('error'),
     facebookDriver: opts.facebookDriver,
+    collectorBrowser: opts.collectorBrowser,
   });
   return { app, store, profileRoot };
 }

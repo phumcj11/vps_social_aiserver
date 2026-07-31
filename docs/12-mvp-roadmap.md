@@ -61,13 +61,14 @@ Scope is bounded by [02-product-scope.md](02-product-scope.md) and [not-doing.md
 - **Exit criteria:** Add/validate/assign/unassign/status groups, workspace-isolated and auditable; validation never reads posts, scrolls, or writes. **Met.**
 - **Main risks:** Unsafe URLs, post-reading during validation, cross-workspace leakage. Mitigated by the strict normaliser, the connection-only validator, and workspace-scoped ownership.
 
-## Sprint 006 — Read-Only Group Scanner (next)
+## Sprint 006 — Collector Engine (read-only)
 
-- **Goal:** Discover new posts in assigned groups, strictly read-only, within the VPS budget.
-- **Deliverables:** Playwright Scanner at concurrency one; gentle scan schedule; post extraction; unique post storage; orchestration via n8n calling the Backend; audit events; visible scanner status.
-- **Exclusions:** No writing to Facebook of any kind; no AI matching/drafting; no approval.
-- **Exit criteria:** New posts in assigned groups are reliably discovered and stored once, with no write actions ever performed, staying within resources.
-- **Main risks:** Resource exhaustion or accidental writes. Mitigated by concurrency one, read-only role separation, and timeouts.
+- **Status:** **Complete.** (Delivered as the "Collector Engine"; the read-only worker is renamed **Scanner → Collector**, and a collected post is a platform-neutral **Signal** — see [ADR-010](adr/ADR-010-signal-model.md).)
+- **Goal:** Discover posts in active groups, strictly read-only, and store them as Signals within the VPS budget.
+- **Deliverables:** Modular Collector Engine (Navigation, Extractor, Normalizer, Repository, Coordinator) at concurrency one; raw + normalized Signal storage; duplicate detection (URL → facebook_post_id → hash); per-group checkpoints; run history; API + dashboard + worker + CLI; audit events. Orchestration is via the backend/CLI (not n8n). See [34-collector-engine.md](34-collector-engine.md), [ADR-009](adr/ADR-009-collector-engine.md).
+- **Exclusions:** No Facebook writes of any kind; no matching, AI, Telegram, comment, opportunity, notification, or approval. Reader gated off by default.
+- **Exit criteria:** Posts in active groups are collected read-only and stored once (deduplicated), with checkpoints for resume and no write actions ever performed, within resources. **Met.**
+- **Main risks:** Resource exhaustion or accidental writes/contact. Mitigated by concurrency one, a read-only `PageController` (no write methods), the reader gate (no browser by default), bounded scrolls/posts/timeout, and no infinite retries.
 
 ## Sprint 007 — Business Matching and AI Draft
 

@@ -121,14 +121,17 @@ The core of the model is the **Business**. **Facebook** appears only through the
 - **Invariants:** A post is only considered for a business if such an assignment exists (BR-12).
 - **Implementation status:** Implemented in SPRINT 005 as `business_facebook_groups` — a many-to-many link within a workspace, unique `(business_id, facebook_group_id)` ([ADR-008](adr/ADR-008-business-to-group-many-to-many.md)). Assignment carries no scanning/commenting capability yet. See [33-business-group-assignment.md](33-business-group-assignment.md).
 
-## Post
+## Post → Signal
 
-- **Purpose:** A single discovered Facebook Group post that may be a lead.
+> **Renamed (SPRINT 006):** "Post" is now **Signal** — a platform-neutral unit of collected content (today a Facebook post; tomorrow a TikTok video, Instagram reel, or LINE message). See [ADR-010](adr/ADR-010-signal-model.md).
+
+- **Purpose:** A single collected Facebook Group post, stored as a platform-neutral Signal that may later become an Opportunity.
 - **Owner:** One Workspace (via the group).
-- **Important attributes:** Group reference, platform post identity, author (as visible), content summary, discovery time.
-- **Relationships:** Belongs to one Facebook Group; produces zero or more Business Matches.
-- **Lifecycle:** Discovered → matched (or not) → retained for history.
-- **Invariants:** Stored once per group (BR-13); discovery is read-only and never writes to Facebook.
+- **Important attributes:** Group reference, platform post identity, post URL, author (as visible), message, media, created time.
+- **Relationships:** Belongs to one Facebook Group; will produce zero or more Business Matches (later sprint).
+- **Lifecycle:** Collected (raw) → normalized (Signal) → retained; matched (or not) in a later sprint.
+- **Invariants:** Collection is READ-ONLY and never writes to Facebook. Stored as an immutable raw signal plus a normalized Signal; deduplicated by URL → facebook_post_id → normalized hash.
+- **Implementation status:** Implemented in SPRINT 006 by the Collector Engine — tables `facebook_raw_signals` (immutable) and `facebook_signals` (normalized), with `collector_checkpoints` and `collector_runs`. Collection knows nothing about Business/AI/opportunity. See [34-collector-engine.md](34-collector-engine.md), [37-raw-signal.md](37-raw-signal.md), [38-normalized-signal.md](38-normalized-signal.md).
 
 ## Business Match
 

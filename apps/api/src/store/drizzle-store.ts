@@ -1,4 +1,4 @@
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import {
   users,
@@ -12,6 +12,10 @@ import {
   auditEvents,
   facebookGroups,
   businessFacebookGroups,
+  facebookRawSignals,
+  facebookSignals,
+  collectorCheckpoints,
+  collectorRuns,
 } from '../db/schema';
 import type {
   Store,
@@ -47,6 +51,15 @@ import type {
   GroupAccessUpdate,
   BusinessGroupAssignmentRecord,
   CreateGroupAssignmentInput,
+  RawSignalRecord,
+  CreateRawSignalInput,
+  SignalRecord,
+  CreateSignalInput,
+  CollectorCheckpointRecord,
+  UpsertCheckpointInput,
+  CollectorRunRecord,
+  CollectorRunStatus,
+  UpdateCollectorRunInput,
 } from './types';
 
 /** Parse a JSON-encoded string array column, tolerating null/invalid. */
@@ -804,6 +817,278 @@ export class DrizzleStore implements Store {
       status: row.status,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+    };
+  }
+
+  // ── Collector: raw signals ─────────────────────────────────────────────────
+
+  async createRawSignal(input: CreateRawSignalInput): Promise<RawSignalRecord> {
+    await this.db.insert(facebookRawSignals).values({
+      id: input.id,
+      workspaceId: input.workspaceId,
+      groupId: input.groupId,
+      facebookPostId: input.facebookPostId,
+      postUrl: input.postUrl,
+      rawHtml: input.rawHtml,
+      rawJson: input.rawJson,
+      contentHash: input.contentHash,
+    });
+    const rows = await this.db
+      .select()
+      .from(facebookRawSignals)
+      .where(eq(facebookRawSignals.id, input.id))
+      .limit(1);
+    if (!rows[0]) throw new Error('raw signal creation failed');
+    return this.toRawSignal(rows[0]);
+  }
+
+  async rawSignalExistsByUrl(workspaceId: string, postUrl: string): Promise<boolean> {
+    const rows = await this.db
+      .select({ id: facebookRawSignals.id })
+      .from(facebookRawSignals)
+      .where(
+        and(
+          eq(facebookRawSignals.workspaceId, workspaceId),
+          eq(facebookRawSignals.postUrl, postUrl),
+        ),
+      )
+      .limit(1);
+    return rows.length > 0;
+  }
+
+  // ── Collector: normalized signals ──────────────────────────────────────────
+
+  async createSignal(input: CreateSignalInput): Promise<SignalRecord> {
+    await this.db.insert(facebookSignals).values({
+      id: input.id,
+      workspaceId: input.workspaceId,
+      groupId: input.groupId,
+      facebookPostId: input.facebookPostId,
+      postUrl: input.postUrl,
+      authorName: input.authorName,
+      authorProfile: input.authorProfile,
+      message: input.message,
+      mediaUrls: JSON.stringify(input.mediaUrls),
+      createdTime: input.createdTime,
+      normalizedHash: input.normalizedHash,
+    });
+    const rows = await this.db
+      .select()
+      .from(facebookSignals)
+      .where(eq(facebookSignals.id, input.id))
+      .limit(1);
+    if (!rows[0]) throw new Error('signal creation failed');
+    return this.toSignal(rows[0]);
+  }
+
+  async signalExistsByUrl(workspaceId: string, postUrl: string): Promise<boolean> {
+    const rows = await this.db
+      .select({ id: facebookSignals.id })
+      .from(facebookSignals)
+      .where(
+        and(eq(facebookSignals.workspaceId, workspaceId), eq(facebookSignals.postUrl, postUrl)),
+      )
+      .limit(1);
+    return rows.length > 0;
+  }
+
+  async signalExistsByFacebookPostId(
+    workspaceId: string,
+    facebookPostId: string,
+  ): Promise<boolean> {
+    const rows = await this.db
+      .select({ id: facebookSignals.id })
+      .from(facebookSignals)
+      .where(
+        and(
+          eq(facebookSignals.workspaceId, workspaceId),
+          eq(facebookSignals.facebookPostId, facebookPostId),
+        ),
+      )
+      .limit(1);
+    return rows.length > 0;
+  }
+
+  async signalExistsByHash(workspaceId: string, normalizedHash: string): Promise<boolean> {
+    const rows = await this.db
+      .select({ id: facebookSignals.id })
+      .from(facebookSignals)
+      .where(
+        and(
+          eq(facebookSignals.workspaceId, workspaceId),
+          eq(facebookSignals.normalizedHash, normalizedHash),
+        ),
+      )
+      .limit(1);
+    return rows.length > 0;
+  }
+
+  async countSignalsByWorkspace(workspaceId: string): Promise<number> {
+    const rows = await this.db
+      .select({ c: sql<number>`count(*)` })
+      .from(facebookSignals)
+      .where(eq(facebookSignals.workspaceId, workspaceId));
+    return Number(rows[0]?.c ?? 0);
+  }
+
+  // ── Collector: checkpoints ─────────────────────────────────────────────────
+
+  async getCheckpointByGroup(groupId: string): Promise<CollectorCheckpointRecord | null> {
+    const rows = await this.db
+      .select()
+      .from(collectorCheckpoints)
+      .where(eq(collectorCheckpoints.groupId, groupId))
+      .limit(1);
+    return rows[0] ? this.toCheckpoint(rows[0]) : null;
+  }
+
+  async upsertCheckpoint(input: UpsertCheckpointInput): Promise<CollectorCheckpointRecord> {
+    const existing = await this.getCheckpointByGroup(input.groupId);
+    if (existing) {
+      await this.db
+        .update(collectorCheckpoints)
+        .set({
+          lastPostId: input.lastPostId,
+          lastPostUrl: input.lastPostUrl,
+          lastScan: input.lastScan,
+          lastCursor: input.lastCursor,
+        })
+        .where(eq(collectorCheckpoints.groupId, input.groupId));
+    } else {
+      await this.db.insert(collectorCheckpoints).values({
+        id: input.id,
+        workspaceId: input.workspaceId,
+        groupId: input.groupId,
+        lastPostId: input.lastPostId,
+        lastPostUrl: input.lastPostUrl,
+        lastScan: input.lastScan,
+        lastCursor: input.lastCursor,
+      });
+    }
+    const created = await this.getCheckpointByGroup(input.groupId);
+    if (!created) throw new Error('checkpoint upsert failed');
+    return created;
+  }
+
+  // ── Collector: runs ────────────────────────────────────────────────────────
+
+  async createCollectorRun(id: string, workspaceId: string): Promise<CollectorRunRecord> {
+    await this.db.insert(collectorRuns).values({
+      id,
+      workspaceId,
+      status: 'running',
+      groupsProcessed: 0,
+      postsCollected: 0,
+      errors: 0,
+    });
+    const created = await this.getCollectorRunById(id);
+    if (!created) throw new Error('run creation failed');
+    return created;
+  }
+
+  async updateCollectorRun(
+    id: string,
+    input: UpdateCollectorRunInput,
+  ): Promise<CollectorRunRecord | null> {
+    const set: Partial<typeof collectorRuns.$inferInsert> = {};
+    if (input.status !== undefined) set.status = input.status;
+    if (input.finishedAt !== undefined) set.finishedAt = input.finishedAt;
+    if (input.groupsProcessed !== undefined) set.groupsProcessed = input.groupsProcessed;
+    if (input.postsCollected !== undefined) set.postsCollected = input.postsCollected;
+    if (input.errors !== undefined) set.errors = input.errors;
+    if (input.errorSummary !== undefined) set.errorSummary = input.errorSummary;
+    if (Object.keys(set).length > 0) {
+      await this.db.update(collectorRuns).set(set).where(eq(collectorRuns.id, id));
+    }
+    return this.getCollectorRunById(id);
+  }
+
+  async getCollectorRunById(id: string): Promise<CollectorRunRecord | null> {
+    const rows = await this.db
+      .select()
+      .from(collectorRuns)
+      .where(eq(collectorRuns.id, id))
+      .limit(1);
+    return rows[0] ? this.toRun(rows[0]) : null;
+  }
+
+  async getLatestCollectorRun(workspaceId: string): Promise<CollectorRunRecord | null> {
+    const rows = await this.db
+      .select()
+      .from(collectorRuns)
+      .where(eq(collectorRuns.workspaceId, workspaceId))
+      .orderBy(desc(collectorRuns.startedAt))
+      .limit(1);
+    return rows[0] ? this.toRun(rows[0]) : null;
+  }
+
+  async listCollectorRuns(workspaceId: string, limit = 50): Promise<CollectorRunRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(collectorRuns)
+      .where(eq(collectorRuns.workspaceId, workspaceId))
+      .orderBy(desc(collectorRuns.startedAt))
+      .limit(limit);
+    return rows.map((r) => this.toRun(r));
+  }
+
+  private toRawSignal(row: typeof facebookRawSignals.$inferSelect): RawSignalRecord {
+    return {
+      id: row.id,
+      workspaceId: row.workspaceId,
+      groupId: row.groupId,
+      facebookPostId: row.facebookPostId,
+      postUrl: row.postUrl,
+      rawHtml: row.rawHtml,
+      rawJson: row.rawJson,
+      contentHash: row.contentHash,
+      collectedAt: row.collectedAt,
+    };
+  }
+
+  private toSignal(row: typeof facebookSignals.$inferSelect): SignalRecord {
+    return {
+      id: row.id,
+      workspaceId: row.workspaceId,
+      groupId: row.groupId,
+      facebookPostId: row.facebookPostId,
+      postUrl: row.postUrl,
+      authorName: row.authorName,
+      authorProfile: row.authorProfile,
+      message: row.message,
+      mediaUrls: parseStringArray(row.mediaUrls),
+      createdTime: row.createdTime,
+      normalizedHash: row.normalizedHash,
+      normalizedAt: row.normalizedAt,
+    };
+  }
+
+  private toCheckpoint(row: typeof collectorCheckpoints.$inferSelect): CollectorCheckpointRecord {
+    return {
+      id: row.id,
+      workspaceId: row.workspaceId,
+      groupId: row.groupId,
+      lastPostId: row.lastPostId,
+      lastPostUrl: row.lastPostUrl,
+      lastScan: row.lastScan,
+      lastCursor: row.lastCursor,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  private toRun(row: typeof collectorRuns.$inferSelect): CollectorRunRecord {
+    return {
+      id: row.id,
+      workspaceId: row.workspaceId,
+      status: row.status as CollectorRunStatus,
+      startedAt: row.startedAt,
+      finishedAt: row.finishedAt,
+      groupsProcessed: row.groupsProcessed,
+      postsCollected: row.postsCollected,
+      errors: row.errors,
+      errorSummary: row.errorSummary,
+      createdAt: row.createdAt,
     };
   }
 

@@ -29,7 +29,8 @@
     "facebook:group:list": "pnpm --filter @kmkt/api facebook:group:list",
     "facebook:group:validate": "pnpm --filter @kmkt/api facebook:group:validate",
     "facebook:group:assign": "pnpm --filter @kmkt/api facebook:group:assign",
-    "facebook:group:unassign": "pnpm --filter @kmkt/api facebook:group:unassign"
+    "facebook:group:unassign": "pnpm --filter @kmkt/api facebook:group:unassign",
+    "collector:run": "pnpm --filter @kmkt/api collector:run"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

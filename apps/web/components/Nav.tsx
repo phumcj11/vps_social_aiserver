@@ -35,6 +35,7 @@ export function Nav({ email }: { email?: string }) {
       <a href="/businesses">Businesses</a>
       <a href="/settings/facebook">Facebook</a>
       <a href="/settings/facebook/groups">Groups</a>
+      <a href="/settings/collector">Collector</a>
       <a href="/settings/workspace">Workspace Settings</a>
       <span style={{ marginLeft: 'auto', color: '#666' }}>{email ?? ''}</span>
       <button type="button" onClick={handleLogout}>

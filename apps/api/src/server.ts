@@ -16,6 +16,10 @@ import { PlaywrightBrowserDriver, type BrowserDriver } from './facebook/driver';
 import { FacebookConnectionService } from './facebook/connection-service';
 import { GroupValidationService } from './facebook/group-validation';
 import { AuditService } from './lib/audit';
+import { registerCollectorRoutes } from './collector/routes';
+import { CollectorRepository } from './collector/repository';
+import { CollectorCoordinator } from './collector/coordinator';
+import { PlaywrightCollectorBrowser, type CollectorBrowser } from './collector/browser';
 
 export interface ServerDeps {
   store: Store;
@@ -25,6 +29,8 @@ export interface ServerDeps {
   dbHealth?: () => Promise<boolean>;
   /** Injectable browser driver (tests provide a fake; runtime uses Playwright). */
   facebookDriver?: BrowserDriver;
+  /** Injectable collector browser (tests provide a fake; runtime uses Playwright). */
+  collectorBrowser?: CollectorBrowser;
 }
 
 /**
@@ -119,6 +125,14 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     env,
     logger,
   });
+  const collector = new CollectorCoordinator({
+    repo: new CollectorRepository(store),
+    browser: deps.collectorBrowser ?? new PlaywrightCollectorBrowser(),
+    profiles,
+    audit,
+    env,
+    logger,
+  });
 
   // Feature routes.
   registerAuthRoutes(app, { store, env, logger, audit });
@@ -126,6 +140,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   registerBusinessRoutes(app, { store, env, logger });
   registerFacebookRoutes(app, { store, env, facebook });
   registerGroupRoutes(app, { store, env, groupValidation, audit });
+  registerCollectorRoutes(app, { store, env, collector });
 
   return app;
 }

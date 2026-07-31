@@ -57,6 +57,13 @@ export const apiEnvSchema = z.object({
   FACEBOOK_CONNECT_TIMEOUT_MS: intFromString(180_000), // 3 minutes
   // How long a validation run may take before timing out.
   FACEBOOK_VALIDATE_TIMEOUT_MS: intFromString(60_000), // 1 minute
+
+  // Collector Engine (SPRINT 006). Reading remains DISABLED by default; the
+  // collector launches a (read-only) browser only when this is explicitly on.
+  FACEBOOK_READER_ENABLED: booleanish(false),
+  COLLECTOR_MAX_SCROLLS: intFromString(5),
+  COLLECTOR_MAX_POSTS_PER_GROUP: intFromString(30),
+  COLLECTOR_TIMEOUT_MS: intFromString(120_000), // 2 minutes per run
 });
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>;

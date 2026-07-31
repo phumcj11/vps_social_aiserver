@@ -344,3 +344,127 @@ export const businessFacebookGroups = mysqlTable(
 
 export type FacebookGroupRow = typeof facebookGroups.$inferSelect;
 export type BusinessFacebookGroupRow = typeof businessFacebookGroups.$inferSelect;
+
+/**
+ * ── SPRINT 006: Collector Engine (read-only) ─────────────────────────────────
+ *
+ * The Collector reads posts from Facebook Groups and stores them as SIGNALS.
+ * A Signal is platform-independent (today a Facebook post; tomorrow a TikTok
+ * video, Instagram reel, or LINE message — all Signals). The Collector knows
+ * NOTHING about Business, AI, Telegram, comments, approval, matching, or
+ * opportunities. It never writes to Facebook.
+ */
+
+/** Immutable raw capture — exactly what was collected, never mutated. */
+export const facebookRawSignals = mysqlTable(
+  'facebook_raw_signals',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    workspaceId: varchar('workspace_id', { length: 36 })
+      .notNull()
+      .references(() => workspaces.id),
+    groupId: varchar('group_id', { length: 36 })
+      .notNull()
+      .references(() => facebookGroups.id),
+    facebookPostId: varchar('facebook_post_id', { length: 100 }),
+    postUrl: varchar('post_url', { length: 700 }).notNull(),
+    rawHtml: text('raw_html'),
+    rawJson: text('raw_json'),
+    contentHash: varchar('content_hash', { length: 64 }).notNull(),
+    collectedAt: timestamp('collected_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    // One immutable raw capture per post URL per workspace.
+    workspaceUrlUnique: uniqueIndex('facebook_raw_signals_workspace_url_unique').on(
+      table.workspaceId,
+      table.postUrl,
+    ),
+    groupIdx: index('facebook_raw_signals_group_idx').on(table.groupId),
+    hashIdx: index('facebook_raw_signals_hash_idx').on(table.contentHash),
+  }),
+);
+
+/** Normalized, platform-neutral Signal derived from a raw capture. */
+export const facebookSignals = mysqlTable(
+  'facebook_signals',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    workspaceId: varchar('workspace_id', { length: 36 })
+      .notNull()
+      .references(() => workspaces.id),
+    groupId: varchar('group_id', { length: 36 })
+      .notNull()
+      .references(() => facebookGroups.id),
+    facebookPostId: varchar('facebook_post_id', { length: 100 }),
+    postUrl: varchar('post_url', { length: 700 }).notNull(),
+    authorName: varchar('author_name', { length: 255 }),
+    authorProfile: varchar('author_profile', { length: 700 }),
+    message: text('message'),
+    mediaUrls: text('media_urls'), // JSON-encoded string[]
+    createdTime: datetime('created_time'),
+    normalizedHash: varchar('normalized_hash', { length: 64 }).notNull(),
+    normalizedAt: timestamp('normalized_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    // Primary duplicate key: one Signal per post URL per workspace.
+    workspaceUrlUnique: uniqueIndex('facebook_signals_workspace_url_unique').on(
+      table.workspaceId,
+      table.postUrl,
+    ),
+    fbPostIdx: index('facebook_signals_fb_post_idx').on(table.workspaceId, table.facebookPostId),
+    hashIdx: index('facebook_signals_hash_idx').on(table.workspaceId, table.normalizedHash),
+    groupIdx: index('facebook_signals_group_idx').on(table.groupId),
+  }),
+);
+
+/** Per-group resume checkpoint. */
+export const collectorCheckpoints = mysqlTable(
+  'collector_checkpoints',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    workspaceId: varchar('workspace_id', { length: 36 })
+      .notNull()
+      .references(() => workspaces.id),
+    groupId: varchar('group_id', { length: 36 })
+      .notNull()
+      .references(() => facebookGroups.id),
+    lastPostId: varchar('last_post_id', { length: 100 }),
+    lastPostUrl: varchar('last_post_url', { length: 700 }),
+    lastScan: datetime('last_scan'),
+    lastCursor: varchar('last_cursor', { length: 255 }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => ({
+    groupUnique: uniqueIndex('collector_checkpoints_group_unique').on(table.groupId),
+  }),
+);
+
+/** Execution history for collector runs. */
+export const collectorRuns = mysqlTable(
+  'collector_runs',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    workspaceId: varchar('workspace_id', { length: 36 })
+      .notNull()
+      .references(() => workspaces.id),
+    // idle | running | paused | completed | failed
+    status: varchar('status', { length: 20 }).notNull().default('running'),
+    startedAt: timestamp('started_at').notNull().defaultNow(),
+    finishedAt: datetime('finished_at'),
+    groupsProcessed: int('groups_processed').notNull().default(0),
+    postsCollected: int('posts_collected').notNull().default(0),
+    errors: int('errors').notNull().default(0),
+    // Safe, human-readable error/outcome classifications (no post text, no secrets).
+    errorSummary: text('error_summary'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    workspaceIdx: index('collector_runs_workspace_idx').on(table.workspaceId),
+  }),
+);
+
+export type FacebookRawSignalRow = typeof facebookRawSignals.$inferSelect;
+export type FacebookSignalRow = typeof facebookSignals.$inferSelect;
+export type CollectorCheckpointRow = typeof collectorCheckpoints.$inferSelect;
+export type CollectorRunRow = typeof collectorRuns.$inferSelect;

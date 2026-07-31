@@ -125,6 +125,24 @@ export interface AssignedBusiness {
   status: string;
 }
 
+export interface CollectorRunSummary {
+  runId: string;
+  status: 'idle' | 'running' | 'paused' | 'completed' | 'failed';
+  startedAt: string;
+  finishedAt: string | null;
+  groupsProcessed: number;
+  postsCollected: number;
+  errors: number;
+  errorSummary: string | null;
+  durationMs: number | null;
+}
+
+export interface CollectorStatus {
+  run: CollectorRunSummary | null;
+  totalSignals: number;
+  running: boolean;
+}
+
 export class ApiRequestError extends Error {
   code?: string;
   status: number;
@@ -303,4 +321,13 @@ export const api = {
     request<{ groups: FacebookGroup[] }>(`/businesses/${businessId}/facebook-groups`, {
       method: 'GET',
     }),
+
+  // ── Collector ──────────────────────────────────────────────────────────────
+  getCollectorStatus: () => request<CollectorStatus>('/collector/status', { method: 'GET' }),
+  startCollector: () =>
+    request<{ run: CollectorRunSummary }>('/collector/start', { method: 'POST' }),
+  stopCollector: () =>
+    request<{ run: CollectorRunSummary | null }>('/collector/stop', { method: 'POST' }),
+  listCollectorRuns: () =>
+    request<{ runs: CollectorRunSummary[] }>('/collector/runs', { method: 'GET' }),
 };

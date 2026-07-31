@@ -84,4 +84,11 @@ export const AuditEventTypes = {
   FacebookGroupValidationFailed: 'facebook_group_validation_failed',
   FacebookGroupAssignedToBusiness: 'facebook_group_assigned_to_business',
   FacebookGroupUnassignedFromBusiness: 'facebook_group_unassigned_from_business',
+  // Collector Engine (SPRINT 006)
+  CollectorRunStarted: 'collector_run_started',
+  CollectorRunCompleted: 'collector_run_completed',
+  CollectorRunPaused: 'collector_run_paused',
+  CollectorRunFailed: 'collector_run_failed',
+  CollectorGroupCollected: 'collector_group_collected',
+  CollectorGroupError: 'collector_group_error',
 } as const;
