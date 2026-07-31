@@ -2,33 +2,33 @@
 
 ## Current Sprint
 
-**SPRINT 007 — Opportunity Classification Engine**
+**SPRINT 008 — Business Candidate & Matching Engine**
 
 ## Objectives
 
-**Opportunity Classifier (deterministic, no AI).**
+**Business Candidate & Matching (deterministic, no AI).**
 
-Read existing **Signals** and decide, per Signal, **"should this become an Opportunity?"** using pure deterministic rules. The Classifier produces a binary Decision (`ACCEPT` / `REJECT`) with explicit Reasons — **no score, no confidence**. It knows nothing about Businesses, AI, Telegram, comments, notifications, approval, or Facebook writes. The concept **Detector → Classifier** is renamed. Concretely:
+For each accepted **Opportunity**, generate candidate businesses and decide, per candidate, whether it **MATCH**es or **NO_MATCH**es — using ONLY the business's human-authored Business Matching Rules. **No score, no confidence, no AI.** Concretely:
 
-- Database: `opportunities` (UNIQUE `signal_id`) and `opportunity_events` (migration `0005`).
-- Three modules: Classifier (pure `classifySignal`), Repository (only DB boundary, via the Store), Coordinator (classify-all pass + state machine + ownership).
-- Rules `rules-v1`: HAS_TEXT, TEXT_MIN_LENGTH (configurable), HAS_AUTHOR, HAS_URL, NOT_DELETED, SUPPORTED_LANGUAGE, NOT_DUPLICATE. ACCEPT only if every rule passes.
-- API, Opportunity Dashboard + Detail; audit events (`OpportunityCreated`/`OpportunityRejected`/`OpportunityArchived`).
-- Documentation ([40](40-opportunity-classifier.md)–[43](43-classification-rules.md)) and [ADR-011](adr/ADR-011-opportunity-classification.md)/[ADR-012](adr/ADR-012-opportunity-domain.md).
+- Database: `business_matches` (UNIQUE `(opportunity_id, business_id)`; migration `0006`).
+- Three modules: CandidateGenerator (pure `selectCandidates`), BusinessMatcher (pure `matchBusiness`), MatchRepository (only DB boundary, via the Store), Coordinator (run + idempotency + ownership).
+- Candidate rule: active businesses assigned to the Opportunity's Signal's group (BR-15). Matching `rules-v1`: case-insensitive substring containment of each active rule value in the Signal message; MATCH iff ≥1 rule matches.
+- API, Opportunity Detail (Candidate Businesses → Matched Businesses → Reasons) + Business Match detail page.
+- Documentation ([44](44-business-candidate-engine.md)–[47](47-business-match-lifecycle.md)) and [ADR-013](adr/ADR-013-business-candidate-generator.md)/[ADR-014](adr/ADR-014-business-matching-engine.md).
 
 ## Scope
 
 **In scope**
 
-- Deterministic classification: Signal → rules → Decision (ACCEPT/REJECT) + Reasons.
-- Opportunity persistence with UNIQUE `signal_id` (one Signal → max one Opportunity); idempotent classify pass.
-- State machine (ACCEPT → READY, REJECT → ARCHIVED; manual → ARCHIVED); append-only event log; statistics.
+- Deterministic pipeline: Opportunity → Candidate Generator → Business Matcher → Business Match.
+- Business Match persistence with UNIQUE `(opportunity_id, business_id)` (one match per pair); idempotent run.
+- Decision (MATCH/NO_MATCH) + reasons array; zero/one/many matches per Opportunity, each distinct, never silently chosen.
 
 **Out of scope**
 
-- AI / ML / embeddings / vector search; score / confidence; Business matching.
-- Telegram, comment, Facebook write/message, notification, approval, recommendation.
-- The Opportunity has no downstream consumer — the pipeline ends at Opportunity.
+- AI / ML / embeddings / vector or semantic search; score / confidence.
+- Comment Drafts, Telegram, comment, Facebook write/message, notification, approval, recommendation, auto-selection.
+- The Business Match has no downstream consumer — the pipeline ends at Business Match.
 
 The full exclusion list is in [not-doing.md](not-doing.md).
 
@@ -36,19 +36,19 @@ The full exclusion list is in [not-doing.md](not-doing.md).
 
 **Complete (not committed).**
 
-The Opportunity Classifier reads Signals and decides `ACCEPT`/`REJECT` with explicit Reasons, as three single-responsibility modules where the Classifier is pure (no DB, no AI), the Repository is the only DB boundary, and the Coordinator runs the state machine and enforces ownership. Accepted Opportunities become `READY` (`OpportunityCreated`), rejected ones `ARCHIVED` (`OpportunityRejected`), and manual archive appends `OpportunityArchived`. The UNIQUE `signal_id` guarantees one Signal → at most one Opportunity and makes the classify pass idempotent. No AI, no score/confidence, no Business matching, no Telegram, no Facebook write. The full quality suite passes (lint, typecheck, test — 173 passing, build, format:check, doctor) and `db:status` is green; the flow was verified live against MySQL (classify → statistics → list → detail with Reasons/Signal/events → status patch → idempotent re-run → cross-workspace 404). No commit was made this sprint. Detail: [sprints/SPRINT-007-opportunity-classifier.md](sprints/SPRINT-007-opportunity-classifier.md).
+The engine reads accepted Opportunities, generates candidate businesses (those assigned to the Signal's group), runs the pure matcher against each candidate's active rules, and stores a Business Match — as three single-responsibility modules where the CandidateGenerator and Matcher are pure (no DB, no AI), the MatchRepository is the only DB boundary, and the Coordinator runs the pipeline and enforces ownership. Matches are `MATCH`/`NO_MATCH` with a rule-by-rule reasons array; there is no score and no confidence. The UNIQUE `(opportunity_id, business_id)` guarantees one match per pair and makes the run idempotent. Only accepted Opportunities are matched; when several businesses match, each is recorded distinctly and none is silently chosen. No AI, no Comment Draft, no Telegram, no Facebook write. The full quality suite passes (lint, typecheck, test — 196 passing, build, format:check, doctor) and `db:status` is green; the flow was verified live against MySQL (run → list/filter → detail → idempotent re-run → cross-workspace 404). No commit was made this sprint. Detail: [sprints/SPRINT-008-business-matching.md](sprints/SPRINT-008-business-matching.md).
 
 ## Definition of Done
 
-- [x] Migration `0005` (`opportunities` UNIQUE `signal_id`, `opportunity_events`); no business/AI/telegram/comment/score tables.
-- [x] Three modules (Classifier pure, Repository sole DB boundary, Coordinator orchestration).
-- [x] Deterministic rules `rules-v1`; Decision + Reasons stored in the creation event.
-- [x] State machine + append-only events + statistics; one Signal → max one Opportunity; idempotent.
-- [x] API + dashboard + detail; ownership enforced (404 cross-workspace); safe responses.
-- [x] Tests (173 passing, 26 new) with in-memory store; no AI, no external calls.
+- [x] Migration `0006` (`business_matches` UNIQUE `(opportunity_id, business_id)`); no AI/telegram/comment/draft/approval/score tables.
+- [x] Four modules (CandidateGenerator pure, BusinessMatcher pure, MatchRepository sole DB boundary, Coordinator orchestration).
+- [x] Deterministic candidate rule + matching `rules-v1`; Decision + reasons stored; `matcher_version` recorded.
+- [x] One (Opportunity, Business) → max one match; idempotent run; only accepted Opportunities matched.
+- [x] API + Opportunity Detail (candidates/matched/reasons) + match detail; ownership enforced (404 cross-workspace).
+- [x] Tests (196 passing, 23 new: candidate, matcher, repository, coordinator, API, ownership, duplicate).
 - [x] Full quality suite + `db:status` green; live runtime verified; Collector/Signals unchanged.
-- [x] Documentation + ADR-011/012; no AI/Business/Telegram/Comment/Facebook write. **No commit** made.
+- [x] Documentation + ADR-013/014; no AI/Telegram/Comment/Facebook write. **No commit** made.
 
 ## Next
 
-On sign-off, the project proceeds to **SPRINT 008 — Business Matching and AI Draft**: match Signals/Opportunities to businesses and generate business-specific drafts, with scores and explanations. See [12-mvp-roadmap.md](12-mvp-roadmap.md).
+On sign-off, the project proceeds to **SPRINT 009 — AI Draft Generation**: for matched businesses, generate business-specific comment drafts using only that business's context, with prohibited-claim screening and validated structured output (the first AI; AI never posts). See [12-mvp-roadmap.md](12-mvp-roadmap.md).

@@ -81,15 +81,26 @@ Scope is bounded by [02-product-scope.md](02-product-scope.md) and [not-doing.md
 
 > **Note:** the "Opportunity Classification Engine" was inserted here as a deterministic precondition for later intelligence, so **Business Matching and AI Draft** and every subsequent sprint below shift by one.
 
-## Sprint 008 — Business Matching and AI Draft
+## Sprint 008 — Business Candidate & Matching Engine
 
-- **Goal:** Match posts to businesses and generate business-specific drafts, with scores and explanations.
-- **Deliverables:** Matching producing zero/one/many matches with confidence and plain-English reasons; multi-business matches surfaced distinctly; AI draft generation using only the selected business context; prohibited-claim screening; structured AI output validated by the Backend; safe fallback and missing-data behaviour; audit events.
+- **Status:** **Complete.** (Delivered as a **deterministic, rules-only** matching stage. The **AI Draft** half of the originally-planned "Business Matching and AI Draft" is split out to Sprint 009 — matching precedes drafting, and matching is deterministic. NO AI, NO score/confidence this sprint.)
+- **Goal:** For each accepted Opportunity, generate candidate businesses and decide `MATCH`/`NO_MATCH` per candidate using only the business's Business Matching Rules.
+- **Deliverables:** `business_matches` (UNIQUE `(opportunity_id, business_id)`, migration `0006`); three modules — CandidateGenerator (pure), BusinessMatcher (pure), MatchRepository (only DB boundary), Coordinator; candidate rule (active businesses assigned to the Signal's group, BR-15); deterministic `rules-v1` matching; zero/one/many matches surfaced distinctly (BR-17/19/20), never silently chosen; API (`/business-matching/run`, `/business-matches`, `/business-matches/:id`); Opportunity Detail (candidates/matched/reasons) + match detail. See [45-business-matching-engine.md](45-business-matching-engine.md), [ADR-013](adr/ADR-013-business-candidate-generator.md), [ADR-014](adr/ADR-014-business-matching-engine.md).
+- **Exclusions:** No AI/ML/embeddings/semantic search; no score/confidence; no Comment Drafts; no Telegram; no Facebook writing; no auto-selection among businesses.
+- **Exit criteria:** For accepted Opportunities, the system produces correct, explainable, deterministic matches; ambiguous (multi-business) matches are never silently resolved; one match per (opportunity, business); run idempotent. **Met.**
+- **Main risks:** Scope creep into AI/scoring, or duplicate matches. Mitigated by the pure-Matcher boundary (no DB, no model) and the UNIQUE constraint with an idempotent run.
+
+## Sprint 009 — AI Draft Generation
+
+- **Goal:** For matched businesses, generate business-specific comment drafts with plain-English rationale — the first AI in the pipeline.
+- **Deliverables:** AI draft generation using only the matched business's context; prohibited-claim screening; structured AI output validated by the Backend; safe fallback and missing-data behaviour; audit events.
 - **Exclusions:** No Telegram delivery yet; no Facebook writing; no auto-selection among businesses.
-- **Exit criteria:** For discovered posts, the system produces correct, explainable matches and compliant drafts; ambiguous matches are never silently resolved; AI never posts.
+- **Exit criteria:** For matched businesses, the system produces compliant drafts using only that business's context; AI never posts.
 - **Main risks:** Cross-business context leakage or hallucination. Mitigated by prompt layering, output contracts, and prohibited-claim checks ([09-ai-design.md](09-ai-design.md)).
 
-## Sprint 009 — Telegram Approval
+> **Note:** the deterministic **Business Candidate & Matching Engine** took Sprint 008, and **AI Draft Generation** became its own Sprint 009, so every subsequent sprint below shifts by one.
+
+## Sprint 010 — Telegram Approval
 
 - **Goal:** Deliver opportunities to Telegram and capture human decisions safely.
 - **Deliverables:** Telegram onboarding/pairing; destination mapping; opportunity messages (business, group, summary, score/reasons, draft); approve/edit/reject/open-post; server-side callback validation; duplicate and expired-callback protection; audit events.
@@ -97,7 +108,7 @@ Scope is bounded by [02-product-scope.md](02-product-scope.md) and [not-doing.md
 - **Exit criteria:** A human can receive opportunities and approve, edit, or reject them from Telegram; decisions are validated and recorded; duplicates/expiry handled safely.
 - **Main risks:** Spoofed or duplicated callbacks. Mitigated by Backend validation and idempotent decision handling ([11-telegram-design.md](11-telegram-design.md)).
 
-## Sprint 010 — Playwright Comment Execution
+## Sprint 011 — Playwright Comment Execution
 
 - **Goal:** Publish approved comments to Facebook, verified and evidenced — the first Facebook writes.
 - **Deliverables:** Comment Executor at concurrency one; direct post navigation; publish approved text; verification; screenshot capture; idempotency (one success per business-and-post); bounded retries after confirmed technical failure; error classification; kill-switch enforcement; success/failure notifications; audit events.
@@ -105,7 +116,7 @@ Scope is bounded by [02-product-scope.md](02-product-scope.md) and [not-doing.md
 - **Exit criteria:** Approved comments are reliably published, verified, and screenshotted; the kill switch halts new writes; idempotency and retry rules hold; failures are surfaced.
 - **Main risks:** Unintended or duplicate posts; checkpoints. Mitigated by verification, idempotency, kill switch, and never bypassing CAPTCHAs.
 
-## Sprint 011 — History, Audit, Screenshot, and Stabilisation
+## Sprint 012 — History, Audit, Screenshot, and Stabilisation
 
 - **Goal:** Make the whole loop trustworthy, complete, and stable.
 - **Deliverables:** Approval History UI; complete, consistent audit trail; screenshot viewing; session-expiry recovery flow; System Status and kill-switch screen; resource and stability hardening within the VPS budget; consistency checks (e.g. no "success" without a screenshot).
@@ -113,7 +124,7 @@ Scope is bounded by [02-product-scope.md](02-product-scope.md) and [not-doing.md
 - **Exit criteria:** History and audit are complete and accurate; recovery and kill-switch flows work; the system is stable within 2 cores/3.8 GiB under pilot load.
 - **Main risks:** Hidden inconsistencies in history. Mitigated by explicit consistency checks and the no-silent-failure rule.
 
-## Sprint 012 — Pilot Release
+## Sprint 013 — Pilot Release
 
 - **Goal:** Onboard the first real pilot customer end to end.
 - **Deliverables:** Pilot onboarding materials; operator runbook (session recovery, checkpoints, kill switch); monitoring of health within budget; a defined feedback loop; go/no-go checklist against [02-product-scope.md](02-product-scope.md)'s pilot-readiness criteria.

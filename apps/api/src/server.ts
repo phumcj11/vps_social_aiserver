@@ -23,6 +23,9 @@ import { PlaywrightCollectorBrowser, type CollectorBrowser } from './collector/b
 import { registerOpportunityRoutes } from './opportunity/routes';
 import { OpportunityRepository } from './opportunity/repository';
 import { OpportunityCoordinator } from './opportunity/coordinator';
+import { registerMatchingRoutes } from './matching/routes';
+import { MatchRepository } from './matching/repository';
+import { MatchingCoordinator } from './matching/coordinator';
 
 export interface ServerDeps {
   store: Store;
@@ -141,6 +144,10 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     env,
     logger,
   });
+  const matching = new MatchingCoordinator({
+    repo: new MatchRepository(store),
+    logger,
+  });
 
   // Feature routes.
   registerAuthRoutes(app, { store, env, logger, audit });
@@ -150,6 +157,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   registerGroupRoutes(app, { store, env, groupValidation, audit });
   registerCollectorRoutes(app, { store, env, collector });
   registerOpportunityRoutes(app, { store, env, opportunities });
+  registerMatchingRoutes(app, { store, env, matching });
 
   return app;
 }

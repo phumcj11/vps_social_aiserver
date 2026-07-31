@@ -47,6 +47,9 @@ import type {
   OpportunityEventRecord,
   CreateOpportunityEventInput,
   OpportunityStatistics,
+  BusinessMatchRecord,
+  CreateBusinessMatchInput,
+  BusinessMatchFilter,
 } from './types';
 
 /**
@@ -72,6 +75,7 @@ export class InMemoryStore implements Store {
   private collectorRuns = new Map<string, CollectorRunRecord>(); // keyed by id
   private opportunities = new Map<string, OpportunityRecord>(); // keyed by id
   private opportunityEvents: OpportunityEventRecord[] = [];
+  private businessMatches = new Map<string, BusinessMatchRecord>(); // keyed by id
 
   private now(): Date {
     return new Date();
@@ -952,5 +956,60 @@ export class InMemoryStore implements Store {
       .filter((e) => e.opportunityId === opportunityId)
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
       .map((e) => ({ ...e }));
+  }
+
+  // ── Business matches (SPRINT 008) ──────────────────────────────────────────
+
+  private cloneMatch(m: BusinessMatchRecord): BusinessMatchRecord {
+    return { ...m, reasons: m.reasons.map((r) => ({ ...r })) };
+  }
+
+  async createBusinessMatch(input: CreateBusinessMatchInput): Promise<BusinessMatchRecord> {
+    for (const m of this.businessMatches.values()) {
+      if (m.opportunityId === input.opportunityId && m.businessId === input.businessId) {
+        throw new Error('duplicate business match for opportunity and business');
+      }
+    }
+    const record: BusinessMatchRecord = {
+      id: input.id,
+      workspaceId: input.workspaceId,
+      businessId: input.businessId,
+      opportunityId: input.opportunityId,
+      decision: input.decision,
+      reasons: input.reasons.map((r) => ({ ...r })),
+      matcherVersion: input.matcherVersion,
+      matchedAt: this.now(),
+    };
+    this.businessMatches.set(record.id, record);
+    return this.cloneMatch(record);
+  }
+
+  async getBusinessMatchById(id: string): Promise<BusinessMatchRecord | null> {
+    const m = this.businessMatches.get(id);
+    return m ? this.cloneMatch(m) : null;
+  }
+
+  async businessMatchExists(opportunityId: string, businessId: string): Promise<boolean> {
+    for (const m of this.businessMatches.values()) {
+      if (m.opportunityId === opportunityId && m.businessId === businessId) return true;
+    }
+    return false;
+  }
+
+  async listBusinessMatchesByWorkspace(
+    workspaceId: string,
+    filter: BusinessMatchFilter = {},
+  ): Promise<BusinessMatchRecord[]> {
+    return [...this.businessMatches.values()]
+      .filter(
+        (m) =>
+          m.workspaceId === workspaceId &&
+          (filter.opportunityId === undefined || m.opportunityId === filter.opportunityId) &&
+          (filter.businessId === undefined || m.businessId === filter.businessId) &&
+          (filter.decision === undefined || m.decision === filter.decision),
+      )
+      .sort((a, b) => b.matchedAt.getTime() - a.matchedAt.getTime())
+      .slice(0, filter.limit ?? 500)
+      .map((m) => this.cloneMatch(m));
   }
 }

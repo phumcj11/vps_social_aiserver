@@ -18,6 +18,7 @@ import {
   collectorRuns,
   opportunities,
   opportunityEvents,
+  businessMatches,
 } from '../db/schema';
 import type {
   Store,
@@ -69,6 +70,11 @@ import type {
   OpportunityEventRecord,
   CreateOpportunityEventInput,
   OpportunityStatistics,
+  BusinessMatchRecord,
+  MatchDecision,
+  MatchReason,
+  CreateBusinessMatchInput,
+  BusinessMatchFilter,
 } from './types';
 
 /** Parse a JSON-encoded string array column, tolerating null/invalid. */
@@ -1306,6 +1312,94 @@ export class DrizzleStore implements Store {
       event: row.event,
       payload,
       createdAt: row.createdAt,
+    };
+  }
+
+  // ── Business matches (SPRINT 008) ──────────────────────────────────────────
+
+  async createBusinessMatch(input: CreateBusinessMatchInput): Promise<BusinessMatchRecord> {
+    await this.db.insert(businessMatches).values({
+      id: input.id,
+      workspaceId: input.workspaceId,
+      businessId: input.businessId,
+      opportunityId: input.opportunityId,
+      decision: input.decision,
+      reasons: JSON.stringify(input.reasons),
+      matcherVersion: input.matcherVersion,
+    });
+    const created = await this.getBusinessMatchById(input.id);
+    if (!created) throw new Error('business match creation failed');
+    return created;
+  }
+
+  async getBusinessMatchById(id: string): Promise<BusinessMatchRecord | null> {
+    const rows = await this.db
+      .select()
+      .from(businessMatches)
+      .where(eq(businessMatches.id, id))
+      .limit(1);
+    return rows[0] ? this.toBusinessMatch(rows[0]) : null;
+  }
+
+  async businessMatchExists(opportunityId: string, businessId: string): Promise<boolean> {
+    const rows = await this.db
+      .select({ id: businessMatches.id })
+      .from(businessMatches)
+      .where(
+        and(
+          eq(businessMatches.opportunityId, opportunityId),
+          eq(businessMatches.businessId, businessId),
+        ),
+      )
+      .limit(1);
+    return rows.length > 0;
+  }
+
+  async listBusinessMatchesByWorkspace(
+    workspaceId: string,
+    filter: BusinessMatchFilter = {},
+  ): Promise<BusinessMatchRecord[]> {
+    const conds = [eq(businessMatches.workspaceId, workspaceId)];
+    if (filter.opportunityId) conds.push(eq(businessMatches.opportunityId, filter.opportunityId));
+    if (filter.businessId) conds.push(eq(businessMatches.businessId, filter.businessId));
+    if (filter.decision) conds.push(eq(businessMatches.decision, filter.decision));
+    const rows = await this.db
+      .select()
+      .from(businessMatches)
+      .where(and(...conds))
+      .orderBy(desc(businessMatches.matchedAt))
+      .limit(filter.limit ?? 500);
+    return rows.map((r) => this.toBusinessMatch(r));
+  }
+
+  private toBusinessMatch(row: typeof businessMatches.$inferSelect): BusinessMatchRecord {
+    let reasons: MatchReason[] = [];
+    if (row.reasons) {
+      try {
+        const parsed: unknown = JSON.parse(row.reasons);
+        if (Array.isArray(parsed)) {
+          reasons = parsed.filter(
+            (r): r is MatchReason =>
+              !!r &&
+              typeof r === 'object' &&
+              typeof (r as MatchReason).ruleType === 'string' &&
+              typeof (r as MatchReason).ruleValue === 'string' &&
+              typeof (r as MatchReason).matched === 'boolean',
+          );
+        }
+      } catch {
+        reasons = [];
+      }
+    }
+    return {
+      id: row.id,
+      workspaceId: row.workspaceId,
+      businessId: row.businessId,
+      opportunityId: row.opportunityId,
+      decision: row.decision as MatchDecision,
+      reasons,
+      matcherVersion: row.matcherVersion,
+      matchedAt: row.matchedAt,
     };
   }
 }

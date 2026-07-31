@@ -8,6 +8,7 @@ import {
   type Opportunity,
   type OpportunitySignal,
   type OpportunityEvent,
+  type BusinessMatch,
 } from '../../../../lib/api';
 import { Nav } from '../../../../components/Nav';
 
@@ -33,14 +34,30 @@ export default function OpportunityDetailPage() {
   const [opportunity, setOpportunity] = useState<Opportunity | null>(null);
   const [signal, setSignal] = useState<OpportunitySignal | null>(null);
   const [events, setEvents] = useState<OpportunityEvent[]>([]);
+  const [matches, setMatches] = useState<BusinessMatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [matchBusy, setMatchBusy] = useState(false);
 
   async function load() {
-    const res = await api.getOpportunity(id);
+    const [res, m] = await Promise.all([
+      api.getOpportunity(id),
+      api.listBusinessMatches({ opportunityId: id }),
+    ]);
     setOpportunity(res.opportunity);
     setSignal(res.signal);
     setEvents(res.events);
+    setMatches(m.matches);
+  }
+
+  async function runMatching() {
+    setMatchBusy(true);
+    try {
+      await api.runBusinessMatching();
+      await load();
+    } finally {
+      setMatchBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -152,6 +169,63 @@ export default function OpportunityDetailPage() {
           </ul>
         ) : (
           <p>Signal not available.</p>
+        )}
+      </section>
+
+      <section style={{ marginBottom: '1.25rem' }}>
+        <h2>Business Matching</h2>
+        <p style={{ color: '#666' }}>
+          Deterministic matching against each candidate business&rsquo;s rules — no AI, no score.
+          Candidate businesses are those assigned to this Signal&rsquo;s group. Matching runs for
+          accepted opportunities.
+        </p>
+        <button
+          type="button"
+          disabled={matchBusy || opportunity.decision !== 'ACCEPT'}
+          onClick={runMatching}
+        >
+          {matchBusy ? 'Matching…' : 'Run business matching'}
+        </button>
+
+        <h3>Candidate Businesses</h3>
+        {matches.length === 0 ? (
+          <p>No candidates evaluated yet.</p>
+        ) : (
+          <ul>
+            {matches.map((m) => (
+              <li key={m.id}>
+                <a href={`/settings/business-matches/${m.id}`}>{m.businessName ?? m.businessId}</a>{' '}
+                —{' '}
+                <strong style={{ color: m.decision === 'MATCH' ? '#0a7d28' : '#b00020' }}>
+                  {m.decision}
+                </strong>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <h3>Matched Businesses</h3>
+        {matches.filter((m) => m.decision === 'MATCH').length === 0 ? (
+          <p>No matched businesses.</p>
+        ) : (
+          <ul>
+            {matches
+              .filter((m) => m.decision === 'MATCH')
+              .map((m) => (
+                <li key={m.id}>
+                  <strong>{m.businessName ?? m.businessId}</strong>
+                  <ul>
+                    {m.reasons
+                      .filter((r) => r.matched)
+                      .map((r, i) => (
+                        <li key={i} style={{ color: '#0a7d28' }}>
+                          ✓ {r.ruleType}: {r.ruleValue}
+                        </li>
+                      ))}
+                  </ul>
+                </li>
+              ))}
+          </ul>
         )}
       </section>
 

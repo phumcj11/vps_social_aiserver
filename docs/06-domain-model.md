@@ -147,12 +147,16 @@ The core of the model is the **Business**. **Facebook** appears only through the
 
 ## Business Match
 
-- **Purpose:** The judgement that a post is relevant to a particular business, with a score and explanation.
+> **Deterministic stored root (SPRINT 008):** as of the Business Candidate & Matching Engine, a **Business Match** is a first-class stored entity — the record of a deterministic decision between one Opportunity and one candidate Business, using only that business's Business Matching Rules. **NO AI, NO score, NO confidence.** See [ADR-014](adr/ADR-014-business-matching-engine.md), [47-business-match-lifecycle.md](47-business-match-lifecycle.md).
+
+- **Purpose:** The judgement that an Opportunity is (or is not) relevant to a particular business, with a plain, rule-by-rule explanation. Deterministic — no score, no confidence, no AI.
 - **Owner:** One Workspace.
-- **Important attributes:** Post reference, business reference, confidence score, plain-English explanation.
-- **Relationships:** Links one Post and one Business; leads to one Comment Draft.
-- **Lifecycle:** Created by matching → drives an opportunity → resolved by a decision.
-- **Invariants:** Zero, one, or many per post (BR-17); when many, each is presented distinctly and none is silently chosen (BR-19, BR-20).
+- **Important attributes:** Opportunity reference, business reference, Decision (`MATCH`/`NO_MATCH`), reasons array (`{ ruleType, ruleValue, matched }`), matcher version, matched-at.
+- **Relationships:** Links one Opportunity and one candidate Business (UNIQUE pair). Will lead to one Comment Draft in a later sprint.
+- **Lifecycle:** Computed once per (Opportunity, Business) pair by a matching run (idempotent). No mutable status; downstream workflow references it without mutating it.
+- **Invariants:** UNIQUE (`opportunity_id`, `business_id`); Decision is deterministic (rules-only, versioned `rules-v1`); workspace-scoped (cross-workspace access → 404). Zero, one, or many per Opportunity (BR-17); when many, each is presented distinctly and none is silently chosen (BR-19, BR-20).
+- **Candidates:** the businesses evaluated for an Opportunity are those **active** businesses assigned to the Signal's group (BR-15) — the **Candidate Generator** ([44-business-candidate-engine.md](44-business-candidate-engine.md)).
+- **Implementation status:** Implemented in SPRINT 008 — table `business_matches` (migration `0006`); modules CandidateGenerator (pure), BusinessMatcher (pure), MatchRepository (only DB boundary), Coordinator. See [45-business-matching-engine.md](45-business-matching-engine.md), [46-matching-rules.md](46-matching-rules.md), [ADR-013](adr/ADR-013-business-candidate-generator.md).
 
 > **Opportunity (two senses).** The **stored Opportunity** above (SPRINT 007) is the deterministic classification record for one Signal. Separately, later sprints will present a human-facing *opportunity bundle* — a stored Opportunity enriched with a Business Match, post summary, score, reasons, and Comment Draft — for Telegram approval. The bundle is a presentation concept built on top of the stored root; it does not replace it.
 

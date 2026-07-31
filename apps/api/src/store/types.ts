@@ -440,6 +440,45 @@ export interface OpportunityStatistics {
   unclassifiedSignals: number;
 }
 
+// ── Business Candidate & Matching (SPRINT 008) ───────────────────────────────
+
+export type MatchDecision = 'MATCH' | 'NO_MATCH';
+
+/** A single evaluated matching rule and whether it matched the Signal. */
+export interface MatchReason {
+  ruleType: string;
+  ruleValue: string;
+  matched: boolean;
+}
+
+export interface BusinessMatchRecord {
+  id: string;
+  workspaceId: string;
+  businessId: string;
+  opportunityId: string;
+  decision: MatchDecision;
+  reasons: MatchReason[];
+  matcherVersion: string;
+  matchedAt: Date;
+}
+
+export interface CreateBusinessMatchInput {
+  id: string;
+  workspaceId: string;
+  businessId: string;
+  opportunityId: string;
+  decision: MatchDecision;
+  reasons: MatchReason[];
+  matcherVersion: string;
+}
+
+export interface BusinessMatchFilter {
+  opportunityId?: string;
+  businessId?: string;
+  decision?: MatchDecision;
+  limit?: number;
+}
+
 export interface Store {
   // Users
   createUser(input: CreateUserInput): Promise<UserRecord>;
@@ -590,4 +629,13 @@ export interface Store {
   // Opportunity events
   createOpportunityEvent(input: CreateOpportunityEventInput): Promise<OpportunityEventRecord>;
   listOpportunityEvents(opportunityId: string): Promise<OpportunityEventRecord[]>;
+
+  // Business matching (SPRINT 008) — deterministic; one match per (opportunity, business)
+  createBusinessMatch(input: CreateBusinessMatchInput): Promise<BusinessMatchRecord>;
+  getBusinessMatchById(id: string): Promise<BusinessMatchRecord | null>;
+  businessMatchExists(opportunityId: string, businessId: string): Promise<boolean>;
+  listBusinessMatchesByWorkspace(
+    workspaceId: string,
+    filter?: BusinessMatchFilter,
+  ): Promise<BusinessMatchRecord[]>;
 }

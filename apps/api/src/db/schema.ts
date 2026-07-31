@@ -525,3 +525,52 @@ export const opportunityEvents = mysqlTable(
 
 export type OpportunityRow = typeof opportunities.$inferSelect;
 export type OpportunityEventRow = typeof opportunityEvents.$inferSelect;
+
+/**
+ * ── SPRINT 008: Business Candidate & Matching Engine ─────────────────────────
+ *
+ * Deterministic matching decides whether an Opportunity is relevant to a
+ * particular Business, using ONLY that business's human-authored Business
+ * Matching Rules (docs/25-business-matching-rules.md). NO AI, NO ML, NO
+ * embeddings, NO vector/semantic search, NO score, NO confidence.
+ *
+ * Pipeline: Opportunity → Candidate Generator → Business Matcher → Business Match.
+ * Candidates are the businesses assigned to the Opportunity's Signal's group
+ * (BR-15). A Business Match records a deterministic decision (MATCH | NO_MATCH)
+ * plus the reasons array (which rules were evaluated and whether each matched).
+ *
+ * One (Opportunity, Business) pair → at most one Business Match.
+ */
+export const businessMatches = mysqlTable(
+  'business_matches',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    workspaceId: varchar('workspace_id', { length: 36 })
+      .notNull()
+      .references(() => workspaces.id),
+    businessId: varchar('business_id', { length: 36 })
+      .notNull()
+      .references(() => businesses.id),
+    opportunityId: varchar('opportunity_id', { length: 36 })
+      .notNull()
+      .references(() => opportunities.id),
+    // MATCH | NO_MATCH (deterministic — no confidence, no score).
+    decision: varchar('decision', { length: 10 }).notNull(),
+    // JSON-encoded reasons array: [{ ruleType, ruleValue, matched }]. No secrets.
+    reasons: text('reasons'),
+    matcherVersion: varchar('matcher_version', { length: 40 }).notNull(),
+    matchedAt: timestamp('matched_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    // A given Opportunity is matched against a given Business at most once.
+    opportunityBusinessUnique: uniqueIndex('business_matches_opportunity_business_unique').on(
+      table.opportunityId,
+      table.businessId,
+    ),
+    workspaceIdx: index('business_matches_workspace_idx').on(table.workspaceId),
+    opportunityIdx: index('business_matches_opportunity_idx').on(table.opportunityId),
+    businessIdx: index('business_matches_business_idx').on(table.businessId),
+  }),
+);
+
+export type BusinessMatchRow = typeof businessMatches.$inferSelect;

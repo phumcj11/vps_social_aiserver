@@ -183,6 +183,31 @@ export interface OpportunityStatistics {
   unclassifiedSignals: number;
 }
 
+export interface MatchReason {
+  ruleType: string;
+  ruleValue: string;
+  matched: boolean;
+}
+
+export interface BusinessMatch {
+  id: string;
+  businessId: string;
+  businessName: string | null;
+  opportunityId: string;
+  decision: 'MATCH' | 'NO_MATCH';
+  reasons: MatchReason[];
+  matcherVersion: string;
+  matchedAt: string;
+}
+
+export interface MatchRunSummary {
+  processedOpportunities: number;
+  candidates: number;
+  matches: number;
+  noMatches: number;
+  skipped: number;
+}
+
 export class ApiRequestError extends Error {
   code?: string;
   status: number;
@@ -399,4 +424,28 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ status }),
     }),
+
+  // ── Business matching (SPRINT 008) ─────────────────────────────────────────
+  runBusinessMatching: () =>
+    request<{ summary: MatchRunSummary }>('/business-matching/run', { method: 'POST' }),
+  listBusinessMatches: (filter?: {
+    opportunityId?: string;
+    businessId?: string;
+    decision?: string;
+  }) => {
+    const q = new URLSearchParams();
+    if (filter?.opportunityId) q.set('opportunityId', filter.opportunityId);
+    if (filter?.businessId) q.set('businessId', filter.businessId);
+    if (filter?.decision) q.set('decision', filter.decision);
+    const qs = q.toString();
+    return request<{ matches: BusinessMatch[] }>(`/business-matches${qs ? `?${qs}` : ''}`, {
+      method: 'GET',
+    });
+  },
+  getBusinessMatch: (id: string) =>
+    request<{
+      match: BusinessMatch;
+      business: { id: string; name: string; slug: string; status: string } | null;
+      opportunity: Opportunity | null;
+    }>(`/business-matches/${id}`, { method: 'GET' }),
 };
