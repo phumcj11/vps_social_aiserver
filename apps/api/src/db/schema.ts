@@ -574,3 +574,84 @@ export const businessMatches = mysqlTable(
 );
 
 export type BusinessMatchRow = typeof businessMatches.$inferSelect;
+
+/**
+ * ── SPRINT 009: AI Draft Engine ──────────────────────────────────────────────
+ *
+ * The AI Draft Engine turns a MATCH Business Match into a **draft comment
+ * suggestion** for human review. The output is a DRAFT ONLY — it is NEVER sent
+ * to Telegram, NEVER posted to Facebook, and NEVER triggers a write action.
+ * Human approval remains mandatory (docs/09-ai-design.md, ADR-017).
+ *
+ * AI is DISABLED by default; the deterministic Mock provider is used for tests
+ * and local use. Drafts are IMMUTABLE and VERSIONED (ADR-016): a business match
+ * may have many versions; generating a new version supersedes older ones and
+ * NEVER overwrites an existing draft. `input_snapshot` and `policy_result` store
+ * only safe structured context — no secrets, cookies, profile paths, or
+ * chain-of-thought.
+ */
+export const aiDrafts = mysqlTable(
+  'ai_drafts',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    workspaceId: varchar('workspace_id', { length: 36 })
+      .notNull()
+      .references(() => workspaces.id),
+    businessMatchId: varchar('business_match_id', { length: 36 })
+      .notNull()
+      .references(() => businessMatches.id),
+    opportunityId: varchar('opportunity_id', { length: 36 })
+      .notNull()
+      .references(() => opportunities.id),
+    businessId: varchar('business_id', { length: 36 })
+      .notNull()
+      .references(() => businesses.id),
+    // Monotonic version per business match, starting at 1.
+    version: int('version').notNull(),
+    // draft | needs_review | rejected | superseded
+    status: varchar('status', { length: 20 }).notNull().default('draft'),
+    content: text('content'),
+    // Provider/model may be mock values when AI is disabled (default).
+    provider: varchar('provider', { length: 40 }).notNull(),
+    model: varchar('model', { length: 80 }).notNull(),
+    promptVersion: varchar('prompt_version', { length: 40 }).notNull(),
+    // JSON — safe structured context only (no secrets, no chain-of-thought).
+    inputSnapshot: text('input_snapshot'),
+    // JSON — policy decision (PASS | NEEDS_REVIEW | BLOCK) + reasons.
+    policyResult: text('policy_result'),
+    createdBy: varchar('created_by', { length: 36 }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => ({
+    // One draft row per (business match, version) — immutable versioning.
+    matchVersionUnique: uniqueIndex('ai_drafts_match_version_unique').on(
+      table.businessMatchId,
+      table.version,
+    ),
+    workspaceIdx: index('ai_drafts_workspace_idx').on(table.workspaceId),
+    matchIdx: index('ai_drafts_match_idx').on(table.businessMatchId),
+    statusIdx: index('ai_drafts_status_idx').on(table.workspaceId, table.status),
+  }),
+);
+
+/** Append-only lifecycle events for an AI Draft (safe payloads only). */
+export const aiDraftEvents = mysqlTable(
+  'ai_draft_events',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    aiDraftId: varchar('ai_draft_id', { length: 36 })
+      .notNull()
+      .references(() => aiDrafts.id),
+    event: varchar('event', { length: 60 }).notNull(),
+    // JSON-encoded safe payload. No API keys, cookies, tokens, or chain-of-thought.
+    payload: text('payload'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    draftIdx: index('ai_draft_events_draft_idx').on(table.aiDraftId),
+  }),
+);
+
+export type AiDraftRow = typeof aiDrafts.$inferSelect;
+export type AiDraftEventRow = typeof aiDraftEvents.$inferSelect;

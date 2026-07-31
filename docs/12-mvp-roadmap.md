@@ -90,13 +90,14 @@ Scope is bounded by [02-product-scope.md](02-product-scope.md) and [not-doing.md
 - **Exit criteria:** For accepted Opportunities, the system produces correct, explainable, deterministic matches; ambiguous (multi-business) matches are never silently resolved; one match per (opportunity, business); run idempotent. **Met.**
 - **Main risks:** Scope creep into AI/scoring, or duplicate matches. Mitigated by the pure-Matcher boundary (no DB, no model) and the UNIQUE constraint with an idempotent run.
 
-## Sprint 009 — AI Draft Generation
+## Sprint 009 — AI Draft Generation (AI Draft Engine)
 
-- **Goal:** For matched businesses, generate business-specific comment drafts with plain-English rationale — the first AI in the pipeline.
-- **Deliverables:** AI draft generation using only the matched business's context; prohibited-claim screening; structured AI output validated by the Backend; safe fallback and missing-data behaviour; audit events.
-- **Exclusions:** No Telegram delivery yet; no Facebook writing; no auto-selection among businesses.
-- **Exit criteria:** For matched businesses, the system produces compliant drafts using only that business's context; AI never posts.
-- **Main risks:** Cross-business context leakage or hallucination. Mitigated by prompt layering, output contracts, and prohibited-claim checks ([09-ai-design.md](09-ai-design.md)).
+- **Status:** **Complete.** (Delivered as a **DRAFT ONLY** engine with **AI disabled by default** and a deterministic **Mock provider**; a real provider is a disabled boundary, not connected. Human approval remains mandatory.)
+- **Goal:** For matched businesses, generate business-specific comment drafts using only that business's context — the first AI stage, but inert (never posts, sends, or approves).
+- **Deliverables:** `ai_drafts` (UNIQUE `(business_match_id, version)`, immutable versioning) + `ai_draft_events` (migration `0007`); modules BusinessContextBuilder, AiDraftPromptBuilder (layered `rules-v1`, no chain-of-thought), AiDraftProvider (Mock + disabled external), DraftPolicyChecker (PASS/NEEDS_REVIEW/BLOCK), AiDraftRepository, AiDraftCoordinator; prohibited-claim screening; safe missing-data behaviour; API, UI, CLI; 8 audit events. See [48-ai-draft-engine.md](48-ai-draft-engine.md), [ADR-015](adr/ADR-015-ai-provider-abstraction.md), [ADR-016](adr/ADR-016-immutable-ai-draft-versioning.md), [ADR-017](adr/ADR-017-human-approval-after-ai-draft.md).
+- **Exclusions:** No Telegram delivery; no Facebook writing; no approval execution; no auto-selection among businesses; no embeddings/semantic search/vector DB/AI training; no real provider connected; no multiple active providers.
+- **Exit criteria:** For MATCH decisions, the system produces compliant drafts using only that business's context; NO_MATCH never generates; drafts are immutable/versioned and never overwritten; AI never posts, sends, or approves. **Met.**
+- **Main risks:** Cross-business leakage, hallucination, or accidental real AI/write. Mitigated by the safe single-workspace context builder, prompt layering (safety above voice), the pure policy checker, AI-disabled-by-default with a refusing external boundary, and the absence of any approval/posting code path ([09-ai-design.md](09-ai-design.md), [ADR-017](adr/ADR-017-human-approval-after-ai-draft.md)).
 
 > **Note:** the deterministic **Business Candidate & Matching Engine** took Sprint 008, and **AI Draft Generation** became its own Sprint 009, so every subsequent sprint below shifts by one.
 

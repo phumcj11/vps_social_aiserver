@@ -68,6 +68,18 @@ export const apiEnvSchema = z.object({
   // Opportunity Classification (SPRINT 007) — deterministic rules, NO AI.
   // Minimum message length for a Signal to be accepted as an Opportunity.
   OPPORTUNITY_MIN_TEXT_LENGTH: intFromString(15),
+
+  // AI Draft Engine (SPRINT 009). AI is DISABLED by default; the deterministic
+  // Mock provider is used for tests and local use. A real external provider
+  // must REFUSE to run while AI_ENABLED=false. The output is a DRAFT ONLY —
+  // never sent to Telegram, never posted to Facebook.
+  AI_ENABLED: booleanish(false),
+  AI_PROVIDER: z.string().default('mock'),
+  AI_MODEL: z.string().default('mock-draft-v1'),
+  AI_PROMPT_VERSION: z.string().default('rules-v1'),
+  AI_DRAFT_MAX_LENGTH: intFromString(500),
+  AI_CONTEXT_MAX_KNOWLEDGE_ITEMS: intFromString(20),
+  AI_CONTEXT_MAX_CHARACTERS: intFromString(12_000),
 });
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>;

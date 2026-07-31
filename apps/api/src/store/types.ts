@@ -479,6 +479,74 @@ export interface BusinessMatchFilter {
   limit?: number;
 }
 
+// ── AI Draft Engine (SPRINT 009) ─────────────────────────────────────────────
+
+export type AiDraftStatus = 'draft' | 'needs_review' | 'rejected' | 'superseded';
+export type DraftPolicyDecision = 'PASS' | 'NEEDS_REVIEW' | 'BLOCK';
+
+/** Structured policy outcome stored on a draft (safe — no chain-of-thought). */
+export interface DraftPolicyResult {
+  decision: DraftPolicyDecision;
+  reasons: { code: string; detail: string }[];
+}
+
+export interface AiDraftRecord {
+  id: string;
+  workspaceId: string;
+  businessMatchId: string;
+  opportunityId: string;
+  businessId: string;
+  version: number;
+  status: AiDraftStatus;
+  content: string | null;
+  provider: string;
+  model: string;
+  promptVersion: string;
+  inputSnapshot: Record<string, unknown> | null;
+  policyResult: DraftPolicyResult | null;
+  createdBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateAiDraftInput {
+  id: string;
+  workspaceId: string;
+  businessMatchId: string;
+  opportunityId: string;
+  businessId: string;
+  version: number;
+  status: AiDraftStatus;
+  content: string | null;
+  provider: string;
+  model: string;
+  promptVersion: string;
+  inputSnapshot: Record<string, unknown> | null;
+  policyResult: DraftPolicyResult | null;
+  createdBy: string | null;
+}
+
+export interface AiDraftFilter {
+  businessMatchId?: string;
+  status?: AiDraftStatus;
+  limit?: number;
+}
+
+export interface AiDraftEventRecord {
+  id: string;
+  aiDraftId: string;
+  event: string;
+  payload: Record<string, unknown> | null;
+  createdAt: Date;
+}
+
+export interface CreateAiDraftEventInput {
+  id: string;
+  aiDraftId: string;
+  event: string;
+  payload: Record<string, unknown> | null;
+}
+
 export interface Store {
   // Users
   createUser(input: CreateUserInput): Promise<UserRecord>;
@@ -638,4 +706,16 @@ export interface Store {
     workspaceId: string,
     filter?: BusinessMatchFilter,
   ): Promise<BusinessMatchRecord[]>;
+
+  // AI drafts (SPRINT 009) — immutable, versioned; one row per (match, version)
+  createAiDraft(input: CreateAiDraftInput): Promise<AiDraftRecord>;
+  getAiDraftById(id: string): Promise<AiDraftRecord | null>;
+  listAiDraftsByWorkspace(workspaceId: string, filter?: AiDraftFilter): Promise<AiDraftRecord[]>;
+  listAiDraftsForMatch(businessMatchId: string): Promise<AiDraftRecord[]>;
+  getLatestAiDraftForMatch(businessMatchId: string): Promise<AiDraftRecord | null>;
+  updateAiDraftStatus(id: string, status: AiDraftStatus): Promise<AiDraftRecord | null>;
+
+  // AI draft events (append-only)
+  createAiDraftEvent(input: CreateAiDraftEventInput): Promise<AiDraftEventRecord>;
+  listAiDraftEvents(aiDraftId: string): Promise<AiDraftEventRecord[]>;
 }

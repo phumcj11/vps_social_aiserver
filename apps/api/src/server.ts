@@ -26,6 +26,10 @@ import { OpportunityCoordinator } from './opportunity/coordinator';
 import { registerMatchingRoutes } from './matching/routes';
 import { MatchRepository } from './matching/repository';
 import { MatchingCoordinator } from './matching/coordinator';
+import { registerAiDraftRoutes } from './ai/routes';
+import { AiDraftRepository } from './ai/repository';
+import { AiDraftCoordinator } from './ai/coordinator';
+import { selectAiDraftProvider } from './ai/provider';
 
 export interface ServerDeps {
   store: Store;
@@ -148,6 +152,12 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     repo: new MatchRepository(store),
     logger,
   });
+  const aiDrafts = new AiDraftCoordinator({
+    repo: new AiDraftRepository(store),
+    provider: selectAiDraftProvider(env),
+    env,
+    logger,
+  });
 
   // Feature routes.
   registerAuthRoutes(app, { store, env, logger, audit });
@@ -158,6 +168,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   registerCollectorRoutes(app, { store, env, collector });
   registerOpportunityRoutes(app, { store, env, opportunities });
   registerMatchingRoutes(app, { store, env, matching });
+  registerAiDraftRoutes(app, { store, env, aiDrafts });
 
   return app;
 }

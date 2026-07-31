@@ -50,6 +50,12 @@ import type {
   BusinessMatchRecord,
   CreateBusinessMatchInput,
   BusinessMatchFilter,
+  AiDraftRecord,
+  AiDraftStatus,
+  CreateAiDraftInput,
+  AiDraftFilter,
+  AiDraftEventRecord,
+  CreateAiDraftEventInput,
 } from './types';
 
 /**
@@ -76,6 +82,8 @@ export class InMemoryStore implements Store {
   private opportunities = new Map<string, OpportunityRecord>(); // keyed by id
   private opportunityEvents: OpportunityEventRecord[] = [];
   private businessMatches = new Map<string, BusinessMatchRecord>(); // keyed by id
+  private aiDrafts = new Map<string, AiDraftRecord>(); // keyed by id
+  private aiDraftEvents: AiDraftEventRecord[] = [];
 
   private now(): Date {
     return new Date();
@@ -1011,5 +1019,116 @@ export class InMemoryStore implements Store {
       .sort((a, b) => b.matchedAt.getTime() - a.matchedAt.getTime())
       .slice(0, filter.limit ?? 500)
       .map((m) => this.cloneMatch(m));
+  }
+
+  // ── AI drafts (SPRINT 009) ─────────────────────────────────────────────────
+
+  private cloneDraft(d: AiDraftRecord): AiDraftRecord {
+    return {
+      ...d,
+      inputSnapshot: d.inputSnapshot ? structuredClone(d.inputSnapshot) : null,
+      policyResult: d.policyResult
+        ? {
+            decision: d.policyResult.decision,
+            reasons: d.policyResult.reasons.map((r) => ({ ...r })),
+          }
+        : null,
+    };
+  }
+
+  async createAiDraft(input: CreateAiDraftInput): Promise<AiDraftRecord> {
+    for (const d of this.aiDrafts.values()) {
+      if (d.businessMatchId === input.businessMatchId && d.version === input.version) {
+        throw new Error('duplicate ai draft version for business match');
+      }
+    }
+    const now = this.now();
+    const record: AiDraftRecord = {
+      id: input.id,
+      workspaceId: input.workspaceId,
+      businessMatchId: input.businessMatchId,
+      opportunityId: input.opportunityId,
+      businessId: input.businessId,
+      version: input.version,
+      status: input.status,
+      content: input.content,
+      provider: input.provider,
+      model: input.model,
+      promptVersion: input.promptVersion,
+      inputSnapshot: input.inputSnapshot ? structuredClone(input.inputSnapshot) : null,
+      policyResult: input.policyResult
+        ? {
+            decision: input.policyResult.decision,
+            reasons: input.policyResult.reasons.map((r) => ({ ...r })),
+          }
+        : null,
+      createdBy: input.createdBy,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.aiDrafts.set(record.id, record);
+    return this.cloneDraft(record);
+  }
+
+  async getAiDraftById(id: string): Promise<AiDraftRecord | null> {
+    const d = this.aiDrafts.get(id);
+    return d ? this.cloneDraft(d) : null;
+  }
+
+  async listAiDraftsByWorkspace(
+    workspaceId: string,
+    filter: AiDraftFilter = {},
+  ): Promise<AiDraftRecord[]> {
+    return [...this.aiDrafts.values()]
+      .filter(
+        (d) =>
+          d.workspaceId === workspaceId &&
+          (filter.businessMatchId === undefined || d.businessMatchId === filter.businessMatchId) &&
+          (filter.status === undefined || d.status === filter.status),
+      )
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.version - a.version)
+      .slice(0, filter.limit ?? 500)
+      .map((d) => this.cloneDraft(d));
+  }
+
+  async listAiDraftsForMatch(businessMatchId: string): Promise<AiDraftRecord[]> {
+    return [...this.aiDrafts.values()]
+      .filter((d) => d.businessMatchId === businessMatchId)
+      .sort((a, b) => a.version - b.version)
+      .map((d) => this.cloneDraft(d));
+  }
+
+  async getLatestAiDraftForMatch(businessMatchId: string): Promise<AiDraftRecord | null> {
+    const all = [...this.aiDrafts.values()]
+      .filter((d) => d.businessMatchId === businessMatchId)
+      .sort((a, b) => b.version - a.version);
+    return all[0] ? this.cloneDraft(all[0]) : null;
+  }
+
+  async updateAiDraftStatus(id: string, status: AiDraftStatus): Promise<AiDraftRecord | null> {
+    const d = this.aiDrafts.get(id);
+    if (!d) return null;
+    d.status = status;
+    d.updatedAt = this.now();
+    return this.cloneDraft(d);
+  }
+
+  async createAiDraftEvent(input: CreateAiDraftEventInput): Promise<AiDraftEventRecord> {
+    const record: AiDraftEventRecord = {
+      id: input.id,
+      aiDraftId: input.aiDraftId,
+      event: input.event,
+      payload: input.payload,
+      createdAt: this.now(),
+    };
+    this.aiDraftEvents.push(record);
+    return { ...record };
+  }
+
+  async listAiDraftEvents(aiDraftId: string): Promise<AiDraftEventRecord[]> {
+    return this.aiDraftEvents
+      .filter((e) => e.aiDraftId === aiDraftId)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .map((e) => ({ ...e }));
   }
 }

@@ -7,6 +7,8 @@ This document describes how AI is used in the MVP to extract intent from posts, 
 
 The overriding rule: **AI proposes, a human disposes**. Every AI output is a draft for human review, never an action.
 
+> **Implementation status (SPRINT 009).** The **Draft Generation**, **Prompt Layering**, **Prohibited Claims**, **Hallucination Prevention**, **Missing-Data**, **Safe Fallback**, and **AI Output Contract** concepts below are now implemented by the **AI Draft Engine** — as a **DRAFT ONLY** stage with **AI disabled by default** and a deterministic **Mock provider** (no real provider connected). See [48-ai-draft-engine.md](48-ai-draft-engine.md), [50-ai-prompt-design.md](50-ai-prompt-design.md), [51-draft-policy-checker.md](51-draft-policy-checker.md), [53-ai-provider-abstraction.md](53-ai-provider-abstraction.md), and [ADR-015](adr/ADR-015-ai-provider-abstraction.md)–[ADR-017](adr/ADR-017-human-approval-after-ai-draft.md). The **Extraction**, **Matching/confidence score**, and **Telegram** concepts remain design-only or are handled deterministically elsewhere: matching is deterministic and rules-only (Sprint 008, no AI, no score), and Telegram approval is a later sprint.
+
 ---
 
 ## Business Context Structure

@@ -208,6 +208,52 @@ export interface MatchRunSummary {
   skipped: number;
 }
 
+export type AiDraftStatus = 'draft' | 'needs_review' | 'rejected' | 'superseded';
+
+export interface DraftPolicyResult {
+  decision: 'PASS' | 'NEEDS_REVIEW' | 'BLOCK';
+  reasons: { code: string; detail: string }[];
+}
+
+export interface AiDraftSummary {
+  id: string;
+  businessMatchId: string;
+  opportunityId: string;
+  businessId: string;
+  version: number;
+  status: AiDraftStatus;
+  contentPreview: string | null;
+  provider: string;
+  model: string;
+  promptVersion: string;
+  policyResult: DraftPolicyResult | null;
+  createdAt: string;
+}
+
+export interface AiDraft {
+  id: string;
+  businessMatchId: string;
+  opportunityId: string;
+  businessId: string;
+  version: number;
+  status: AiDraftStatus;
+  content: string | null;
+  provider: string;
+  model: string;
+  promptVersion: string;
+  policyResult: DraftPolicyResult | null;
+  context: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AiDraftEvent {
+  id: string;
+  event: string;
+  payload: Record<string, unknown> | null;
+  createdAt: string;
+}
+
 export class ApiRequestError extends Error {
   code?: string;
   status: number;
@@ -448,4 +494,43 @@ export const api = {
       business: { id: string; name: string; slug: string; status: string } | null;
       opportunity: Opportunity | null;
     }>(`/business-matches/${id}`, { method: 'GET' }),
+
+  // ── AI drafts (SPRINT 009) — DRAFT ONLY; never sent to Facebook ────────────
+  generateAiDraft: (businessMatchId: string) =>
+    request<{ draft: AiDraft; created: boolean }>('/ai-drafts/generate', {
+      method: 'POST',
+      body: JSON.stringify({ businessMatchId }),
+    }),
+  regenerateAiDraft: (id: string) =>
+    request<{ draft: AiDraft; created: boolean }>(`/ai-drafts/${id}/regenerate`, {
+      method: 'POST',
+    }),
+  rejectAiDraft: (id: string) =>
+    request<{ draft: AiDraft }>(`/ai-drafts/${id}/reject`, { method: 'POST' }),
+  listAiDrafts: (filter?: { businessMatchId?: string; status?: string }) => {
+    const q = new URLSearchParams();
+    if (filter?.businessMatchId) q.set('businessMatchId', filter.businessMatchId);
+    if (filter?.status) q.set('status', filter.status);
+    const qs = q.toString();
+    return request<{ drafts: AiDraftSummary[] }>(`/ai-drafts${qs ? `?${qs}` : ''}`, {
+      method: 'GET',
+    });
+  },
+  getAiDraft: (id: string) =>
+    request<{
+      draft: AiDraft;
+      events: AiDraftEvent[];
+      match: {
+        id: string;
+        decision: string;
+        reasons: MatchReason[];
+        matcherVersion: string;
+      } | null;
+      opportunity: { id: string; decision: string; status: string } | null;
+      business: { id: string; name: string; slug: string; status: string } | null;
+    }>(`/ai-drafts/${id}`, { method: 'GET' }),
+  listAiDraftsForMatch: (matchId: string) =>
+    request<{ drafts: AiDraftSummary[] }>(`/business-matches/${matchId}/ai-drafts`, {
+      method: 'GET',
+    }),
 };

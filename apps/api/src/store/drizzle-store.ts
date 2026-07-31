@@ -19,6 +19,8 @@ import {
   opportunities,
   opportunityEvents,
   businessMatches,
+  aiDrafts,
+  aiDraftEvents,
 } from '../db/schema';
 import type {
   Store,
@@ -75,6 +77,13 @@ import type {
   MatchReason,
   CreateBusinessMatchInput,
   BusinessMatchFilter,
+  AiDraftRecord,
+  AiDraftStatus,
+  CreateAiDraftInput,
+  AiDraftFilter,
+  AiDraftEventRecord,
+  CreateAiDraftEventInput,
+  DraftPolicyResult,
 } from './types';
 
 /** Parse a JSON-encoded string array column, tolerating null/invalid. */
@@ -1400,6 +1409,157 @@ export class DrizzleStore implements Store {
       reasons,
       matcherVersion: row.matcherVersion,
       matchedAt: row.matchedAt,
+    };
+  }
+
+  // ── AI drafts (SPRINT 009) ─────────────────────────────────────────────────
+
+  async createAiDraft(input: CreateAiDraftInput): Promise<AiDraftRecord> {
+    await this.db.insert(aiDrafts).values({
+      id: input.id,
+      workspaceId: input.workspaceId,
+      businessMatchId: input.businessMatchId,
+      opportunityId: input.opportunityId,
+      businessId: input.businessId,
+      version: input.version,
+      status: input.status,
+      content: input.content,
+      provider: input.provider,
+      model: input.model,
+      promptVersion: input.promptVersion,
+      inputSnapshot: input.inputSnapshot ? JSON.stringify(input.inputSnapshot) : null,
+      policyResult: input.policyResult ? JSON.stringify(input.policyResult) : null,
+      createdBy: input.createdBy,
+    });
+    const created = await this.getAiDraftById(input.id);
+    if (!created) throw new Error('ai draft creation failed');
+    return created;
+  }
+
+  async getAiDraftById(id: string): Promise<AiDraftRecord | null> {
+    const rows = await this.db.select().from(aiDrafts).where(eq(aiDrafts.id, id)).limit(1);
+    return rows[0] ? this.toAiDraft(rows[0]) : null;
+  }
+
+  async listAiDraftsByWorkspace(
+    workspaceId: string,
+    filter: AiDraftFilter = {},
+  ): Promise<AiDraftRecord[]> {
+    const conds = [eq(aiDrafts.workspaceId, workspaceId)];
+    if (filter.businessMatchId) conds.push(eq(aiDrafts.businessMatchId, filter.businessMatchId));
+    if (filter.status) conds.push(eq(aiDrafts.status, filter.status));
+    const rows = await this.db
+      .select()
+      .from(aiDrafts)
+      .where(and(...conds))
+      .orderBy(desc(aiDrafts.createdAt), desc(aiDrafts.version))
+      .limit(filter.limit ?? 500);
+    return rows.map((r) => this.toAiDraft(r));
+  }
+
+  async listAiDraftsForMatch(businessMatchId: string): Promise<AiDraftRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(aiDrafts)
+      .where(eq(aiDrafts.businessMatchId, businessMatchId))
+      .orderBy(aiDrafts.version);
+    return rows.map((r) => this.toAiDraft(r));
+  }
+
+  async getLatestAiDraftForMatch(businessMatchId: string): Promise<AiDraftRecord | null> {
+    const rows = await this.db
+      .select()
+      .from(aiDrafts)
+      .where(eq(aiDrafts.businessMatchId, businessMatchId))
+      .orderBy(desc(aiDrafts.version))
+      .limit(1);
+    return rows[0] ? this.toAiDraft(rows[0]) : null;
+  }
+
+  async updateAiDraftStatus(id: string, status: AiDraftStatus): Promise<AiDraftRecord | null> {
+    await this.db.update(aiDrafts).set({ status }).where(eq(aiDrafts.id, id));
+    return this.getAiDraftById(id);
+  }
+
+  async createAiDraftEvent(input: CreateAiDraftEventInput): Promise<AiDraftEventRecord> {
+    await this.db.insert(aiDraftEvents).values({
+      id: input.id,
+      aiDraftId: input.aiDraftId,
+      event: input.event,
+      payload: input.payload ? JSON.stringify(input.payload) : null,
+    });
+    return {
+      id: input.id,
+      aiDraftId: input.aiDraftId,
+      event: input.event,
+      payload: input.payload,
+      createdAt: new Date(),
+    };
+  }
+
+  async listAiDraftEvents(aiDraftId: string): Promise<AiDraftEventRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(aiDraftEvents)
+      .where(eq(aiDraftEvents.aiDraftId, aiDraftId))
+      .orderBy(aiDraftEvents.createdAt);
+    return rows.map((r) => this.toAiDraftEvent(r));
+  }
+
+  private parseJsonObject(value: string | null): Record<string, unknown> | null {
+    if (!value) return null;
+    try {
+      const parsed: unknown = JSON.parse(value);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private toAiDraft(row: typeof aiDrafts.$inferSelect): AiDraftRecord {
+    const policyRaw = this.parseJsonObject(row.policyResult);
+    let policyResult: DraftPolicyResult | null = null;
+    if (policyRaw && typeof policyRaw.decision === 'string' && Array.isArray(policyRaw.reasons)) {
+      policyResult = {
+        decision: policyRaw.decision as DraftPolicyResult['decision'],
+        reasons: (policyRaw.reasons as unknown[]).filter(
+          (r): r is { code: string; detail: string } =>
+            !!r &&
+            typeof r === 'object' &&
+            typeof (r as { code: unknown }).code === 'string' &&
+            typeof (r as { detail: unknown }).detail === 'string',
+        ),
+      };
+    }
+    return {
+      id: row.id,
+      workspaceId: row.workspaceId,
+      businessMatchId: row.businessMatchId,
+      opportunityId: row.opportunityId,
+      businessId: row.businessId,
+      version: row.version,
+      status: row.status as AiDraftStatus,
+      content: row.content,
+      provider: row.provider,
+      model: row.model,
+      promptVersion: row.promptVersion,
+      inputSnapshot: this.parseJsonObject(row.inputSnapshot),
+      policyResult,
+      createdBy: row.createdBy,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  private toAiDraftEvent(row: typeof aiDraftEvents.$inferSelect): AiDraftEventRecord {
+    return {
+      id: row.id,
+      aiDraftId: row.aiDraftId,
+      event: row.event,
+      payload: this.parseJsonObject(row.payload),
+      createdAt: row.createdAt,
     };
   }
 }

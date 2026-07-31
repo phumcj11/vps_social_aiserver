@@ -30,7 +30,11 @@
     "facebook:group:validate": "pnpm --filter @kmkt/api facebook:group:validate",
     "facebook:group:assign": "pnpm --filter @kmkt/api facebook:group:assign",
     "facebook:group:unassign": "pnpm --filter @kmkt/api facebook:group:unassign",
-    "collector:run": "pnpm --filter @kmkt/api collector:run"
+    "collector:run": "pnpm --filter @kmkt/api collector:run",
+    "ai-draft:generate": "pnpm --filter @kmkt/api ai-draft:generate",
+    "ai-draft:list": "pnpm --filter @kmkt/api ai-draft:list",
+    "ai-draft:show": "pnpm --filter @kmkt/api ai-draft:show",
+    "ai-draft:regenerate": "pnpm --filter @kmkt/api ai-draft:regenerate"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

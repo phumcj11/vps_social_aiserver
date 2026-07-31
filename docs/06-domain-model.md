@@ -160,14 +160,17 @@ The core of the model is the **Business**. **Facebook** appears only through the
 
 > **Opportunity (two senses).** The **stored Opportunity** above (SPRINT 007) is the deterministic classification record for one Signal. Separately, later sprints will present a human-facing *opportunity bundle* — a stored Opportunity enriched with a Business Match, post summary, score, reasons, and Comment Draft — for Telegram approval. The bundle is a presentation concept built on top of the stored root; it does not replace it.
 
-## Comment Draft
+## Comment Draft (AI Draft)
 
-- **Purpose:** The proposed comment text for a specific business-and-post match.
+> **Implemented as a stored root (SPRINT 009):** the **AI Draft Engine** produces a **DRAFT ONLY** for one MATCH Business Match. It is never sent to Telegram, never posted to Facebook, never a write action; human approval remains mandatory ([ADR-017](adr/ADR-017-human-approval-after-ai-draft.md)). AI is disabled by default; a deterministic Mock provider is used for tests/local use ([ADR-015](adr/ADR-015-ai-provider-abstraction.md)). Drafts are immutable and versioned ([ADR-016](adr/ADR-016-immutable-ai-draft-versioning.md)).
+
+- **Purpose:** The proposed comment text for a specific MATCH Business Match, generated from only that business's context. A proposal for human review — never an action.
 - **Owner:** One Workspace.
-- **Important attributes:** Business Match reference, generated text, generation context summary, edited text (if any).
-- **Relationships:** Belongs to one Business Match; receives one Approval Decision.
-- **Lifecycle:** Generated → (optionally edited) → approved or rejected.
-- **Invariants:** Uses only its business's profile (BR-22); contains no prohibited claims (BR-24); both original and edited versions are retained (BR-27).
+- **Important attributes:** Business Match reference (+ denormalised opportunity/business), version, status (`draft`/`needs_review`/`rejected`/`superseded`), content, provider/model/prompt_version, safe input snapshot, policy result (PASS/NEEDS_REVIEW/BLOCK + reasons). Has many append-only draft events.
+- **Relationships:** Belongs to exactly one Business Match; a Business Match may have many Draft versions. A later sprint attaches an Approval Decision.
+- **Lifecycle:** Generated (only for MATCH) → policy PASS ⇒ `draft` / NEEDS_REVIEW or BLOCK ⇒ `needs_review`; regenerate ⇒ new version, older ⇒ `superseded`; human ⇒ `rejected`. No approved/sent/posted state this sprint.
+- **Invariants:** Uses only its business's profile and same-workspace context (BR-22); contains no prohibited claims (BR-24); **every version is retained and immutable** (`UNIQUE (business_match_id, version)`, BR-27); nothing is overwritten; workspace-scoped (cross-workspace access → 404).
+- **Implementation status:** Implemented in SPRINT 009 — tables `ai_drafts` and `ai_draft_events` (migration `0007`); modules BusinessContextBuilder, AiDraftPromptBuilder, AiDraftProvider (Mock), DraftPolicyChecker, AiDraftRepository, AiDraftCoordinator. See [48-ai-draft-engine.md](48-ai-draft-engine.md), [52-ai-draft-lifecycle.md](52-ai-draft-lifecycle.md).
 
 ## Approval Decision
 

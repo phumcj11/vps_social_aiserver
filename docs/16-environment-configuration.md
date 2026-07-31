@@ -84,9 +84,24 @@ For each variable: its **purpose**, **safe default**, whether it is a **secret**
 
 | Variable | Purpose | Safe default | Secret? | Relevant from | Security notes |
 | -------- | ------- | ------------ | ------- | ------------- | -------------- |
-| `AI_ENABLED` | Enables AI matching/drafting. | `false` | No | SPRINT 006 | Provider keys (when introduced) are secrets, never committed. |
-| `TELEGRAM_ENABLED` | Enables the Telegram bot. | `false` | No | SPRINT 007 | Bot token (when introduced) is a secret, never committed. |
+| `AI_ENABLED` | Enables a **real** external AI provider. When `false` (default) a real provider REFUSES to run; the deterministic Mock is used. | `false` | No | SPRINT 009 | Provider keys are secrets, never committed. A draft is never posted or sent regardless. |
+| `TELEGRAM_ENABLED` | Enables the Telegram bot. | `false` | No | SPRINT 010 | Bot token (when introduced) is a secret, never committed. |
 | `N8N_ENABLED` | Enables n8n orchestration. | `false` | No | SPRINT 005+ | n8n is internal only; never publicly exposed. |
+
+### AI Draft Engine (SPRINT 009)
+
+The engine produces **DRAFT ONLY** comment suggestions; a draft is never sent to Telegram, never posted to Facebook, and never triggers a write action. AI is disabled by default and the deterministic Mock provider is used for tests and local use.
+
+| Variable | Purpose | Safe default | Secret? | Security notes |
+| -------- | ------- | ------------ | ------- | -------------- |
+| `AI_PROVIDER` | Which provider to use (`mock` or a real provider name). | `mock` | No | Non-`mock` resolves to a boundary that refuses while `AI_ENABLED=false`. |
+| `AI_MODEL` | Model identifier (mock value when AI is disabled). | `mock-draft-v1` | No | — |
+| `AI_PROMPT_VERSION` | Prompt rule-set version recorded on each draft. | `rules-v1` | No | — |
+| `AI_DRAFT_MAX_LENGTH` | Maximum draft length (characters). | `500` | No | Enforced by the policy checker (over-length → BLOCK). |
+| `AI_CONTEXT_MAX_KNOWLEDGE_ITEMS` | Max knowledge entries in the context. | `20` | No | Bounds context size. |
+| `AI_CONTEXT_MAX_CHARACTERS` | Max total context characters. | `12000` | No | Bounds context size. |
+
+**Future real-provider secrets (documented, never populated in `.env.example`):** `ANTHROPIC_API_KEY` (real provider key), `AI_PROVIDER_BASE_URL` (optional endpoint override). Supply these only via the gitignored `.env`, and only after `AI_ENABLED` is intentionally set. No real API key is ever committed.
 
 ### Authentication, sessions & cookies (SPRINT 002)
 
