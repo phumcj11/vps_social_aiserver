@@ -1,0 +1,12 @@
+node_modules
+dist
+build
+out
+.next
+coverage
+pnpm-lock.yaml
+storage
+
+# Documentation is curated prose/tables — not machine-formatted.
+*.md
+**/*.md

@@ -1,0 +1,43 @@
+{
+  "name": "@kmkt/api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "KMKT Social AI backend API (Fastify). Bootstrap scaffold: health/ready only, no product endpoints, no database access.",
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/index.js",
+    "dev": "node --watch dist/index.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:status": "tsx src/db/status.ts",
+    "db:reset:development": "tsx src/db/reset.ts",
+    "facebook:connect": "tsx src/facebook/cli.ts connect",
+    "facebook:validate": "tsx src/facebook/cli.ts validate",
+    "facebook:disconnect": "tsx src/facebook/cli.ts disconnect",
+    "facebook:status": "tsx src/facebook/cli.ts status",
+    "facebook:group:add": "tsx src/facebook/group-cli.ts add",
+    "facebook:group:list": "tsx src/facebook/group-cli.ts list",
+    "facebook:group:validate": "tsx src/facebook/group-cli.ts validate",
+    "facebook:group:assign": "tsx src/facebook/group-cli.ts assign",
+    "facebook:group:unassign": "tsx src/facebook/group-cli.ts unassign"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/cors": "^11.3.0",
+    "@fastify/rate-limit": "^11.1.0",
+    "drizzle-orm": "^0.45.2",
+    "fastify": "^5.2.1",
+    "mysql2": "^3.23.2",
+    "playwright": "^1.62.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.23.1",
+    "typescript": "^5.7.3"
+  }
+}

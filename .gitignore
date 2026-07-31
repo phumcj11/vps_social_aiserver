@@ -1,0 +1,89 @@
+# ─── Secrets & environment ───────────────────────────────────────────────
+# Never commit real environment values or credentials. .env.example IS tracked.
+.env
+.env.*
+!.env.example
+*.secret
+*.secrets
+secrets/
+credentials/
+*.pem
+*.key
+
+# ─── Node / pnpm ──────────────────────────────────────────────────────────
+node_modules/
+.pnpm-store/
+.pnpm-debug.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ─── Build output ─────────────────────────────────────────────────────────
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# ─── Next.js output ───────────────────────────────────────────────────────
+.next/
+.vercel/
+next-env.d.ts
+
+# ─── Testing / coverage ───────────────────────────────────────────────────
+coverage/
+.vitest/
+
+# ─── Logs ─────────────────────────────────────────────────────────────────
+logs/
+*.log
+storage/logs/*
+!storage/logs/.gitkeep
+
+# ─── Playwright / browser runtime artefacts (reserved for later) ──────────
+# Browser profiles, cookies and session files MUST NEVER be committed.
+storage/browser-profiles/*
+!storage/browser-profiles/.gitkeep
+*.cookies
+cookies/
+*.session
+sessions/
+playwright-report/
+.playwright/
+
+# ─── Screenshots (evidence, runtime only) ─────────────────────────────────
+storage/screenshots/*
+!storage/screenshots/.gitkeep
+
+# ─── Storage runtime files (per-directory rules above keep .gitkeep tracked) ─
+# Any other runtime files placed directly under storage/ are ignored.
+/storage/*
+!/storage/screenshots
+!/storage/browser-profiles
+!/storage/logs
+!/storage/backups
+
+# ─── Database volumes & dumps ─────────────────────────────────────────────
+docker/mysql/data/
+mysql-data/
+*.sql.gz
+*.dump
+
+# ─── n8n credentials & runtime ────────────────────────────────────────────
+docker/n8n/data/
+n8n-data/
+.n8n/
+
+# ─── Backups ──────────────────────────────────────────────────────────────
+storage/backups/*
+!storage/backups/.gitkeep
+backups/
+*.bak
+
+# ─── IDE / editor / OS temporary files ────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db

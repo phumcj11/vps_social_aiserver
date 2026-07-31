@@ -1,0 +1,11 @@
+packages:
+  - 'apps/*'
+  - 'workers/*'
+  - 'packages/*'
+
+# Explicitly control which dependency install scripts may run.
+# esbuild is required by Vitest for TypeScript transforms; sharp is an optional
+# Next.js image-optimisation native build we do not need for the bootstrap.
+allowBuilds:
+  esbuild: true
+  sharp: false

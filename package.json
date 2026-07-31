@@ -1,0 +1,44 @@
+{
+  "name": "kmkt-social-ai",
+  "version": "0.0.0",
+  "private": true,
+  "description": "KMKT Social AI — monorepo (authentication & workspace foundation)",
+  "type": "module",
+  "packageManager": "pnpm@11.18.0",
+  "engines": {
+    "node": ">=22 <23",
+    "pnpm": ">=11"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "vitest run",
+    "build": "pnpm -r --if-present build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "doctor": "node scripts/doctor/index.mjs",
+    "db:generate": "pnpm --filter @kmkt/api db:generate",
+    "db:migrate": "pnpm --filter @kmkt/api db:migrate",
+    "db:status": "pnpm --filter @kmkt/api db:status",
+    "db:reset:development": "pnpm --filter @kmkt/api db:reset:development",
+    "facebook:connect": "pnpm --filter @kmkt/api facebook:connect",
+    "facebook:validate": "pnpm --filter @kmkt/api facebook:validate",
+    "facebook:disconnect": "pnpm --filter @kmkt/api facebook:disconnect",
+    "facebook:status": "pnpm --filter @kmkt/api facebook:status",
+    "facebook:group:add": "pnpm --filter @kmkt/api facebook:group:add",
+    "facebook:group:list": "pnpm --filter @kmkt/api facebook:group:list",
+    "facebook:group:validate": "pnpm --filter @kmkt/api facebook:group:validate",
+    "facebook:group:assign": "pnpm --filter @kmkt/api facebook:group:assign",
+    "facebook:group:unassign": "pnpm --filter @kmkt/api facebook:group:unassign"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/node": "^22.10.5",
+    "eslint": "^9.17.0",
+    "globals": "^15.14.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.19.1",
+    "vitest": "^3.0.2"
+  }
+}
