@@ -655,3 +655,74 @@ export const aiDraftEvents = mysqlTable(
 
 export type AiDraftRow = typeof aiDrafts.$inferSelect;
 export type AiDraftEventRow = typeof aiDraftEvents.$inferSelect;
+
+/**
+ * ── SPRINT 010: Human Review Engine ──────────────────────────────────────────
+ *
+ * The Review Engine is the CORE human-in-the-loop step. An AI Draft becomes a
+ * **Review Task** that a human approves, rejects, or edits. Telegram is ONLY the
+ * first Review Adapter (presentation/notification) — it is NEVER the source of
+ * truth and NEVER writes to the database. All decisions flow Telegram → Review
+ * API → Coordinator → Repository. The engine works WITHOUT Telegram.
+ *
+ * This sprint has NO Facebook comment/message/write, NO Action Engine, NO auto
+ * approval. Approving a Review Task records the human decision only — it does
+ * not post anything.
+ *
+ * One Draft → one Review Task (draft_id is unique).
+ */
+export const reviewTasks = mysqlTable(
+  'review_tasks',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    workspaceId: varchar('workspace_id', { length: 36 })
+      .notNull()
+      .references(() => workspaces.id),
+    businessMatchId: varchar('business_match_id', { length: 36 })
+      .notNull()
+      .references(() => businessMatches.id),
+    // Unique → one Review Task per AI Draft.
+    draftId: varchar('draft_id', { length: 36 })
+      .notNull()
+      .references(() => aiDrafts.id),
+    // PENDING | APPROVED | REJECTED | EXPIRED
+    status: varchar('status', { length: 20 }).notNull().default('PENDING'),
+    assignedTo: varchar('assigned_to', { length: 36 }),
+    // EDIT decision stores the revised comment text + who/when (still requires approval).
+    editedContent: text('edited_content'),
+    editor: varchar('editor', { length: 36 }),
+    editedAt: datetime('edited_at'),
+    // Terminal-decision provenance (approve/reject).
+    decidedBy: varchar('decided_by', { length: 36 }),
+    decidedAt: datetime('decided_at'),
+    decisionReason: varchar('decision_reason', { length: 500 }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => ({
+    draftUnique: uniqueIndex('review_tasks_draft_unique').on(table.draftId),
+    workspaceIdx: index('review_tasks_workspace_idx').on(table.workspaceId),
+    statusIdx: index('review_tasks_status_idx').on(table.workspaceId, table.status),
+  }),
+);
+
+/** Append-only lifecycle events for a Review Task (safe payloads only). */
+export const reviewEvents = mysqlTable(
+  'review_events',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    reviewTaskId: varchar('review_task_id', { length: 36 })
+      .notNull()
+      .references(() => reviewTasks.id),
+    event: varchar('event', { length: 60 }).notNull(),
+    // JSON-encoded safe payload (decision, editor, reason, adapter ref). No secrets.
+    payload: text('payload'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    taskIdx: index('review_events_task_idx').on(table.reviewTaskId),
+  }),
+);
+
+export type ReviewTaskRow = typeof reviewTasks.$inferSelect;
+export type ReviewEventRow = typeof reviewEvents.$inferSelect;

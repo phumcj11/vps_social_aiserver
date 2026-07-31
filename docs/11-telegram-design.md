@@ -7,6 +7,8 @@ This document describes how Telegram is used as the human approval interface for
 
 The defining rule: **Telegram is an approval interface, not the source of truth.** Every decision received through Telegram is validated and recorded by the Backend, which enforces all rules.
 
+> **Implementation status (SPRINT 010).** This design is realised by the **Human Review Engine** — the channel-agnostic core — with **Telegram as only the first Review Adapter**. The engine works **without** Telegram (a web Review Queue is a complete review surface). Telegram is **disabled by default** this sprint (no bot connected; the transport refuses to send), it holds no business logic, and it **never writes to the database**: decisions route **Telegram → Review API → Coordinator → Repository**. Onboarding/pairing, destinations, live callbacks, success/failure and reconnection notifications remain design-only for now. A review decision records the human's choice **only** — it never posts to Facebook (execution is a later sprint). See [54-review-engine.md](54-review-engine.md), [58-telegram-review-adapter.md](58-telegram-review-adapter.md), [ADR-018](adr/ADR-018-review-engine.md), [ADR-019](adr/ADR-019-telegram-adapter.md).
+
 ---
 
 ## Telegram Onboarding

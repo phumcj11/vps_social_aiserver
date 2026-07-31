@@ -547,6 +547,67 @@ export interface CreateAiDraftEventInput {
   payload: Record<string, unknown> | null;
 }
 
+// ── Human Review Engine (SPRINT 010) ─────────────────────────────────────────
+
+export type ReviewStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED';
+
+export interface ReviewTaskRecord {
+  id: string;
+  workspaceId: string;
+  businessMatchId: string;
+  draftId: string;
+  status: ReviewStatus;
+  assignedTo: string | null;
+  editedContent: string | null;
+  editor: string | null;
+  editedAt: Date | null;
+  decidedBy: string | null;
+  decidedAt: Date | null;
+  decisionReason: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateReviewTaskInput {
+  id: string;
+  workspaceId: string;
+  businessMatchId: string;
+  draftId: string;
+  assignedTo: string | null;
+}
+
+export interface UpdateReviewTaskInput {
+  status?: ReviewStatus;
+  assignedTo?: string | null;
+  editedContent?: string | null;
+  editor?: string | null;
+  editedAt?: Date | null;
+  decidedBy?: string | null;
+  decidedAt?: Date | null;
+  decisionReason?: string | null;
+}
+
+export interface ReviewTaskFilter {
+  status?: ReviewStatus;
+  businessMatchId?: string;
+  limit?: number;
+}
+
+export interface ReviewEventRecord {
+  id: string;
+  reviewTaskId: string;
+  event: string;
+  payload: Record<string, unknown> | null;
+  createdAt: Date;
+}
+
+export interface CreateReviewEventInput {
+  id: string;
+  reviewTaskId: string;
+  event: string;
+  payload: Record<string, unknown> | null;
+}
+
 export interface Store {
   // Users
   createUser(input: CreateUserInput): Promise<UserRecord>;
@@ -718,4 +779,18 @@ export interface Store {
   // AI draft events (append-only)
   createAiDraftEvent(input: CreateAiDraftEventInput): Promise<AiDraftEventRecord>;
   listAiDraftEvents(aiDraftId: string): Promise<AiDraftEventRecord[]>;
+
+  // Review tasks (SPRINT 010) — one per draft; human decisions recorded here
+  createReviewTask(input: CreateReviewTaskInput): Promise<ReviewTaskRecord>;
+  getReviewTaskById(id: string): Promise<ReviewTaskRecord | null>;
+  getReviewTaskByDraft(draftId: string): Promise<ReviewTaskRecord | null>;
+  listReviewTasksByWorkspace(
+    workspaceId: string,
+    filter?: ReviewTaskFilter,
+  ): Promise<ReviewTaskRecord[]>;
+  updateReviewTask(id: string, input: UpdateReviewTaskInput): Promise<ReviewTaskRecord | null>;
+
+  // Review events (append-only)
+  createReviewEvent(input: CreateReviewEventInput): Promise<ReviewEventRecord>;
+  listReviewEvents(reviewTaskId: string): Promise<ReviewEventRecord[]>;
 }

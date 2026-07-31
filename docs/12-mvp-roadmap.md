@@ -101,13 +101,14 @@ Scope is bounded by [02-product-scope.md](02-product-scope.md) and [not-doing.md
 
 > **Note:** the deterministic **Business Candidate & Matching Engine** took Sprint 008, and **AI Draft Generation** became its own Sprint 009, so every subsequent sprint below shifts by one.
 
-## Sprint 010 — Telegram Approval
+## Sprint 010 — Human Review Engine (Telegram Approval)
 
-- **Goal:** Deliver opportunities to Telegram and capture human decisions safely.
-- **Deliverables:** Telegram onboarding/pairing; destination mapping; opportunity messages (business, group, summary, score/reasons, draft); approve/edit/reject/open-post; server-side callback validation; duplicate and expired-callback protection; audit events.
-- **Exclusions:** No Facebook writing yet — approval is recorded but not executed.
-- **Exit criteria:** A human can receive opportunities and approve, edit, or reject them from Telegram; decisions are validated and recorded; duplicates/expiry handled safely.
-- **Main risks:** Spoofed or duplicated callbacks. Mitigated by Backend validation and idempotent decision handling ([11-telegram-design.md](11-telegram-design.md)).
+- **Status:** **Complete.** (Delivered as a **channel-agnostic Human Review Engine** — the core — with **Telegram as only the first Review Adapter**, disabled by default. The engine works without Telegram; a decision records the human's choice and posts nothing.)
+- **Goal:** Turn an AI Draft into a Review Task a human approves/rejects/edits, safely and auditably, through the web UI and (optionally) a Review Adapter.
+- **Deliverables:** `review_tasks` (UNIQUE `draft_id`) + `review_events` (migration `0008`); ReviewQueue (create/assign/expire), ReviewRepository (only DB boundary), ReviewCoordinator (AI Draft → Review Task; approve/reject/edit; ownership); ReviewAdapter interface + TelegramReviewAdapter (renders business/opportunity/draft + approve/reject/edit/open-post/open-business, disabled transport, never touches the DB); server-side validation, duplicate-decision protection, expiry; API; Review Queue + Detail + Decision History web pages; audit events. See [54-review-engine.md](54-review-engine.md), [ADR-018](adr/ADR-018-review-engine.md), [ADR-019](adr/ADR-019-telegram-adapter.md).
+- **Exclusions:** No Facebook writing/comment/message; no Action Engine; no auto-approval; no live Telegram bot/pairing/webhook — a decision is recorded but not executed.
+- **Exit criteria:** A human can approve, edit, or reject a Review Task; decisions are validated, recorded, and audited; one Draft → one Review Task; duplicates/expiry handled safely; the engine works without Telegram; nothing is posted. **Met.**
+- **Main risks:** Telegram becoming the source of truth, spoofed/duplicated decisions, or a decision posting. Mitigated by the channel-agnostic core (Telegram → Review API → Coordinator → Repository; adapter never writes the DB), Backend validation, first-valid-decision-wins, and the absence of any posting/Action path ([ADR-018](adr/ADR-018-review-engine.md)).
 
 ## Sprint 011 — Playwright Comment Execution
 

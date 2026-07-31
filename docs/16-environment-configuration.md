@@ -85,7 +85,7 @@ For each variable: its **purpose**, **safe default**, whether it is a **secret**
 | Variable | Purpose | Safe default | Secret? | Relevant from | Security notes |
 | -------- | ------- | ------------ | ------- | ------------- | -------------- |
 | `AI_ENABLED` | Enables a **real** external AI provider. When `false` (default) a real provider REFUSES to run; the deterministic Mock is used. | `false` | No | SPRINT 009 | Provider keys are secrets, never committed. A draft is never posted or sent regardless. |
-| `TELEGRAM_ENABLED` | Enables the Telegram bot. | `false` | No | SPRINT 010 | Bot token (when introduced) is a secret, never committed. |
+| `TELEGRAM_ENABLED` | Enables the Telegram **Review Adapter** transport. When `false` (default) the adapter transport refuses to send and delivery is skipped best-effort; the Review Engine works regardless. | `false` | No | SPRINT 010 | No bot connected this sprint. Bot token (future) is a secret, never committed. A review decision never posts to Facebook regardless. |
 | `N8N_ENABLED` | Enables n8n orchestration. | `false` | No | SPRINT 005+ | n8n is internal only; never publicly exposed. |
 
 ### AI Draft Engine (SPRINT 009)

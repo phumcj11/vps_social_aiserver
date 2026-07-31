@@ -30,6 +30,11 @@ import { registerAiDraftRoutes } from './ai/routes';
 import { AiDraftRepository } from './ai/repository';
 import { AiDraftCoordinator } from './ai/coordinator';
 import { selectAiDraftProvider } from './ai/provider';
+import { registerReviewRoutes } from './review/routes';
+import { ReviewRepository } from './review/repository';
+import { ReviewQueue } from './review/queue';
+import { ReviewCoordinator } from './review/coordinator';
+import { TelegramReviewAdapter, selectTelegramTransport } from './review/telegram-adapter';
 
 export interface ServerDeps {
   store: Store;
@@ -158,6 +163,16 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     env,
     logger,
   });
+  const reviewRepo = new ReviewRepository(store);
+  const reviews = new ReviewCoordinator({
+    repo: reviewRepo,
+    queue: new ReviewQueue(reviewRepo),
+    // Telegram is only the first Review Adapter; its transport is disabled by
+    // default (no bot connected). The engine works even if delivery fails.
+    adapter: new TelegramReviewAdapter(selectTelegramTransport(env)),
+    env,
+    logger,
+  });
 
   // Feature routes.
   registerAuthRoutes(app, { store, env, logger, audit });
@@ -169,6 +184,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   registerOpportunityRoutes(app, { store, env, opportunities });
   registerMatchingRoutes(app, { store, env, matching });
   registerAiDraftRoutes(app, { store, env, aiDrafts });
+  registerReviewRoutes(app, { store, env, reviews });
 
   return app;
 }

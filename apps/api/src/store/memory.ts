@@ -56,6 +56,12 @@ import type {
   AiDraftFilter,
   AiDraftEventRecord,
   CreateAiDraftEventInput,
+  ReviewTaskRecord,
+  CreateReviewTaskInput,
+  UpdateReviewTaskInput,
+  ReviewTaskFilter,
+  ReviewEventRecord,
+  CreateReviewEventInput,
 } from './types';
 
 /**
@@ -84,6 +90,8 @@ export class InMemoryStore implements Store {
   private businessMatches = new Map<string, BusinessMatchRecord>(); // keyed by id
   private aiDrafts = new Map<string, AiDraftRecord>(); // keyed by id
   private aiDraftEvents: AiDraftEventRecord[] = [];
+  private reviewTasks = new Map<string, ReviewTaskRecord>(); // keyed by id
+  private reviewEvents: ReviewEventRecord[] = [];
 
   private now(): Date {
     return new Date();
@@ -1128,6 +1136,98 @@ export class InMemoryStore implements Store {
   async listAiDraftEvents(aiDraftId: string): Promise<AiDraftEventRecord[]> {
     return this.aiDraftEvents
       .filter((e) => e.aiDraftId === aiDraftId)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .map((e) => ({ ...e }));
+  }
+
+  // ── Review tasks (SPRINT 010) ──────────────────────────────────────────────
+
+  async createReviewTask(input: CreateReviewTaskInput): Promise<ReviewTaskRecord> {
+    for (const t of this.reviewTasks.values()) {
+      if (t.draftId === input.draftId) throw new Error('duplicate review task for draft');
+    }
+    const now = this.now();
+    const record: ReviewTaskRecord = {
+      id: input.id,
+      workspaceId: input.workspaceId,
+      businessMatchId: input.businessMatchId,
+      draftId: input.draftId,
+      status: 'PENDING',
+      assignedTo: input.assignedTo,
+      editedContent: null,
+      editor: null,
+      editedAt: null,
+      decidedBy: null,
+      decidedAt: null,
+      decisionReason: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.reviewTasks.set(record.id, record);
+    return { ...record };
+  }
+
+  async getReviewTaskById(id: string): Promise<ReviewTaskRecord | null> {
+    const t = this.reviewTasks.get(id);
+    return t ? { ...t } : null;
+  }
+
+  async getReviewTaskByDraft(draftId: string): Promise<ReviewTaskRecord | null> {
+    for (const t of this.reviewTasks.values()) {
+      if (t.draftId === draftId) return { ...t };
+    }
+    return null;
+  }
+
+  async listReviewTasksByWorkspace(
+    workspaceId: string,
+    filter: ReviewTaskFilter = {},
+  ): Promise<ReviewTaskRecord[]> {
+    return [...this.reviewTasks.values()]
+      .filter(
+        (t) =>
+          t.workspaceId === workspaceId &&
+          (filter.status === undefined || t.status === filter.status) &&
+          (filter.businessMatchId === undefined || t.businessMatchId === filter.businessMatchId),
+      )
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, filter.limit ?? 500)
+      .map((t) => ({ ...t }));
+  }
+
+  async updateReviewTask(
+    id: string,
+    input: UpdateReviewTaskInput,
+  ): Promise<ReviewTaskRecord | null> {
+    const t = this.reviewTasks.get(id);
+    if (!t) return null;
+    if (input.status !== undefined) t.status = input.status;
+    if (input.assignedTo !== undefined) t.assignedTo = input.assignedTo;
+    if (input.editedContent !== undefined) t.editedContent = input.editedContent;
+    if (input.editor !== undefined) t.editor = input.editor;
+    if (input.editedAt !== undefined) t.editedAt = input.editedAt;
+    if (input.decidedBy !== undefined) t.decidedBy = input.decidedBy;
+    if (input.decidedAt !== undefined) t.decidedAt = input.decidedAt;
+    if (input.decisionReason !== undefined) t.decisionReason = input.decisionReason;
+    t.updatedAt = this.now();
+    return { ...t };
+  }
+
+  async createReviewEvent(input: CreateReviewEventInput): Promise<ReviewEventRecord> {
+    const record: ReviewEventRecord = {
+      id: input.id,
+      reviewTaskId: input.reviewTaskId,
+      event: input.event,
+      payload: input.payload,
+      createdAt: this.now(),
+    };
+    this.reviewEvents.push(record);
+    return { ...record };
+  }
+
+  async listReviewEvents(reviewTaskId: string): Promise<ReviewEventRecord[]> {
+    return this.reviewEvents
+      .filter((e) => e.reviewTaskId === reviewTaskId)
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
       .map((e) => ({ ...e }));
   }

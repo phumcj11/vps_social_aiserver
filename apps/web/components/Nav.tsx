@@ -38,6 +38,7 @@ export function Nav({ email }: { email?: string }) {
       <a href="/settings/collector">Collector</a>
       <a href="/settings/opportunities">Opportunities</a>
       <a href="/settings/ai-drafts">AI Drafts</a>
+      <a href="/settings/reviews">Reviews</a>
       <a href="/settings/workspace">Workspace Settings</a>
       <span style={{ marginLeft: 'auto', color: '#666' }}>{email ?? ''}</span>
       <button type="button" onClick={handleLogout}>

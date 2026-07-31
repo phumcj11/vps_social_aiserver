@@ -21,6 +21,8 @@ import {
   businessMatches,
   aiDrafts,
   aiDraftEvents,
+  reviewTasks,
+  reviewEvents,
 } from '../db/schema';
 import type {
   Store,
@@ -84,6 +86,13 @@ import type {
   AiDraftEventRecord,
   CreateAiDraftEventInput,
   DraftPolicyResult,
+  ReviewTaskRecord,
+  ReviewStatus,
+  CreateReviewTaskInput,
+  UpdateReviewTaskInput,
+  ReviewTaskFilter,
+  ReviewEventRecord,
+  CreateReviewEventInput,
 } from './types';
 
 /** Parse a JSON-encoded string array column, tolerating null/invalid. */
@@ -1557,6 +1566,125 @@ export class DrizzleStore implements Store {
     return {
       id: row.id,
       aiDraftId: row.aiDraftId,
+      event: row.event,
+      payload: this.parseJsonObject(row.payload),
+      createdAt: row.createdAt,
+    };
+  }
+
+  // ── Review tasks (SPRINT 010) ──────────────────────────────────────────────
+
+  async createReviewTask(input: CreateReviewTaskInput): Promise<ReviewTaskRecord> {
+    await this.db.insert(reviewTasks).values({
+      id: input.id,
+      workspaceId: input.workspaceId,
+      businessMatchId: input.businessMatchId,
+      draftId: input.draftId,
+      status: 'PENDING',
+      assignedTo: input.assignedTo,
+    });
+    const created = await this.getReviewTaskById(input.id);
+    if (!created) throw new Error('review task creation failed');
+    return created;
+  }
+
+  async getReviewTaskById(id: string): Promise<ReviewTaskRecord | null> {
+    const rows = await this.db.select().from(reviewTasks).where(eq(reviewTasks.id, id)).limit(1);
+    return rows[0] ? this.toReviewTask(rows[0]) : null;
+  }
+
+  async getReviewTaskByDraft(draftId: string): Promise<ReviewTaskRecord | null> {
+    const rows = await this.db
+      .select()
+      .from(reviewTasks)
+      .where(eq(reviewTasks.draftId, draftId))
+      .limit(1);
+    return rows[0] ? this.toReviewTask(rows[0]) : null;
+  }
+
+  async listReviewTasksByWorkspace(
+    workspaceId: string,
+    filter: ReviewTaskFilter = {},
+  ): Promise<ReviewTaskRecord[]> {
+    const conds = [eq(reviewTasks.workspaceId, workspaceId)];
+    if (filter.status) conds.push(eq(reviewTasks.status, filter.status));
+    if (filter.businessMatchId) conds.push(eq(reviewTasks.businessMatchId, filter.businessMatchId));
+    const rows = await this.db
+      .select()
+      .from(reviewTasks)
+      .where(and(...conds))
+      .orderBy(desc(reviewTasks.createdAt))
+      .limit(filter.limit ?? 500);
+    return rows.map((r) => this.toReviewTask(r));
+  }
+
+  async updateReviewTask(
+    id: string,
+    input: UpdateReviewTaskInput,
+  ): Promise<ReviewTaskRecord | null> {
+    const set: Partial<typeof reviewTasks.$inferInsert> = {};
+    if (input.status !== undefined) set.status = input.status;
+    if (input.assignedTo !== undefined) set.assignedTo = input.assignedTo;
+    if (input.editedContent !== undefined) set.editedContent = input.editedContent;
+    if (input.editor !== undefined) set.editor = input.editor;
+    if (input.editedAt !== undefined) set.editedAt = input.editedAt;
+    if (input.decidedBy !== undefined) set.decidedBy = input.decidedBy;
+    if (input.decidedAt !== undefined) set.decidedAt = input.decidedAt;
+    if (input.decisionReason !== undefined) set.decisionReason = input.decisionReason;
+    if (Object.keys(set).length > 0) {
+      await this.db.update(reviewTasks).set(set).where(eq(reviewTasks.id, id));
+    }
+    return this.getReviewTaskById(id);
+  }
+
+  async createReviewEvent(input: CreateReviewEventInput): Promise<ReviewEventRecord> {
+    await this.db.insert(reviewEvents).values({
+      id: input.id,
+      reviewTaskId: input.reviewTaskId,
+      event: input.event,
+      payload: input.payload ? JSON.stringify(input.payload) : null,
+    });
+    return {
+      id: input.id,
+      reviewTaskId: input.reviewTaskId,
+      event: input.event,
+      payload: input.payload,
+      createdAt: new Date(),
+    };
+  }
+
+  async listReviewEvents(reviewTaskId: string): Promise<ReviewEventRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(reviewEvents)
+      .where(eq(reviewEvents.reviewTaskId, reviewTaskId))
+      .orderBy(reviewEvents.createdAt);
+    return rows.map((r) => this.toReviewEvent(r));
+  }
+
+  private toReviewTask(row: typeof reviewTasks.$inferSelect): ReviewTaskRecord {
+    return {
+      id: row.id,
+      workspaceId: row.workspaceId,
+      businessMatchId: row.businessMatchId,
+      draftId: row.draftId,
+      status: row.status as ReviewStatus,
+      assignedTo: row.assignedTo,
+      editedContent: row.editedContent,
+      editor: row.editor,
+      editedAt: row.editedAt,
+      decidedBy: row.decidedBy,
+      decidedAt: row.decidedAt,
+      decisionReason: row.decisionReason,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  private toReviewEvent(row: typeof reviewEvents.$inferSelect): ReviewEventRecord {
+    return {
+      id: row.id,
+      reviewTaskId: row.reviewTaskId,
       event: row.event,
       payload: this.parseJsonObject(row.payload),
       createdAt: row.createdAt,

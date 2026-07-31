@@ -50,6 +50,20 @@ export default function AiDraftDetailPage() {
   const [business, setBusiness] = useState<BizSummary | null>(null);
   const [versions, setVersions] = useState<{ id: string; version: number; status: string }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewMsg, setReviewMsg] = useState<string | null>(null);
+
+  async function sendToReview() {
+    setReviewBusy(true);
+    setReviewMsg(null);
+    try {
+      const res = await api.enqueueReview(id);
+      router.push(`/settings/reviews/${res.review.id}`);
+    } catch (err) {
+      setReviewMsg(err instanceof ApiRequestError ? err.message : 'Could not enqueue review.');
+      setReviewBusy(false);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -130,6 +144,14 @@ export default function AiDraftDetailPage() {
         >
           {draft.content ?? '(no content — see policy result)'}
         </blockquote>
+        <button
+          type="button"
+          disabled={reviewBusy || (draft.status !== 'draft' && draft.status !== 'needs_review')}
+          onClick={sendToReview}
+        >
+          {reviewBusy ? 'Sending…' : 'Send to Review'}
+        </button>
+        {reviewMsg && <p style={{ color: '#b00020' }}>{reviewMsg}</p>}
       </section>
 
       {draft.policyResult && (

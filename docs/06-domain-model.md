@@ -172,14 +172,17 @@ The core of the model is the **Business**. **Facebook** appears only through the
 - **Invariants:** Uses only its business's profile and same-workspace context (BR-22); contains no prohibited claims (BR-24); **every version is retained and immutable** (`UNIQUE (business_match_id, version)`, BR-27); nothing is overwritten; workspace-scoped (cross-workspace access → 404).
 - **Implementation status:** Implemented in SPRINT 009 — tables `ai_drafts` and `ai_draft_events` (migration `0007`); modules BusinessContextBuilder, AiDraftPromptBuilder, AiDraftProvider (Mock), DraftPolicyChecker, AiDraftRepository, AiDraftCoordinator. See [48-ai-draft-engine.md](48-ai-draft-engine.md), [52-ai-draft-lifecycle.md](52-ai-draft-lifecycle.md).
 
-## Approval Decision
+## Review Task (Human Decision)
 
-- **Purpose:** The human's decision on a draft.
-- **Owner:** One Workspace (recorded against a User).
-- **Important attributes:** Draft reference, decision (approve / edit-then-approve / reject), deciding user, reason (optional), timestamp.
-- **Relationships:** Resolves one Comment Draft; an approval creates one Comment Job.
-- **Lifecycle:** Pending → decided (final).
-- **Invariants:** Exactly one decision per opportunity (BR-31); approval is mandatory before any comment (BR-29); only authorised users decide (BR-32).
+> **Implemented as a stored root (SPRINT 010):** the human decision on a draft is a **Review Task** produced by the **Human Review Engine** — the channel-agnostic core. **Telegram is only the first Review Adapter**, never the source of truth ([ADR-018](adr/ADR-018-review-engine.md), [ADR-019](adr/ADR-019-telegram-adapter.md), [54-review-engine.md](54-review-engine.md)). A decision records the human's choice **only** — this sprint has NO Facebook write, NO comment, and NO Action Engine.
+
+- **Purpose:** The human's decision on an AI Draft: approve, reject, or edit. The engine's core unit.
+- **Owner:** One Workspace (decisions recorded against a User).
+- **Important attributes:** Draft reference (UNIQUE — one Draft → one Review Task), Business Match reference, status (`PENDING`/`APPROVED`/`REJECTED`/`EXPIRED`), assignee, edited content + editor + edited-at, decided-by + decided-at + reason. Has many append-only review events.
+- **Relationships:** Belongs to exactly one AI Draft. A later sprint may execute an approved decision (out of scope here).
+- **Lifecycle:** PENDING → APPROVED / REJECTED (terminal) or EXPIRED; EDIT stores revised text and keeps the task PENDING (approval still required, BR-28).
+- **Invariants:** One Review Task per Draft (`UNIQUE draft_id`); exactly one terminal decision — the first valid decision wins (BR-31); approval is explicit and mandatory before any future comment (BR-29); only authorised users of the owning workspace decide (BR-32); cross-workspace access → 404. A decision **posts nothing** — no Facebook write, no Action Engine.
+- **Implementation status:** Implemented in SPRINT 010 — tables `review_tasks` and `review_events` (migration `0008`); modules ReviewQueue, ReviewRepository, ReviewCoordinator, and the ReviewAdapter interface with a disabled-by-default TelegramReviewAdapter. See [55-review-queue.md](55-review-queue.md), [57-human-decision.md](57-human-decision.md).
 
 ## Comment Job
 

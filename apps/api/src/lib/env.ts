@@ -80,6 +80,12 @@ export const apiEnvSchema = z.object({
   AI_DRAFT_MAX_LENGTH: intFromString(500),
   AI_CONTEXT_MAX_KNOWLEDGE_ITEMS: intFromString(20),
   AI_CONTEXT_MAX_CHARACTERS: intFromString(12_000),
+
+  // Human Review Engine (SPRINT 010). Telegram is ONLY the first Review Adapter;
+  // the Review Engine works WITHOUT it. Telegram is DISABLED by default — no bot
+  // is connected and the adapter transport refuses to send while disabled. A
+  // review decision NEVER posts to Facebook and NEVER triggers a write action.
+  TELEGRAM_ENABLED: booleanish(false),
 });
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>;

@@ -254,6 +254,41 @@ export interface AiDraftEvent {
   createdAt: string;
 }
 
+export type ReviewStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED';
+
+export interface ReviewTask {
+  id: string;
+  businessMatchId: string;
+  draftId: string;
+  status: ReviewStatus;
+  assignedTo: string | null;
+  editedContent: string | null;
+  editor: string | null;
+  editedAt: string | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  decisionReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReviewPresentation {
+  reviewTaskId: string;
+  status: ReviewStatus;
+  business: { name: string };
+  opportunity: { decision: string; message: string | null };
+  draft: { content: string | null; version: number; status: string };
+  editedContent: string | null;
+  links: { facebookPostUrl: string | null; businessUrl: string | null };
+}
+
+export interface ReviewEvent {
+  id: string;
+  event: string;
+  payload: Record<string, unknown> | null;
+  createdAt: string;
+}
+
 export class ApiRequestError extends Error {
   code?: string;
   status: number;
@@ -532,5 +567,44 @@ export const api = {
   listAiDraftsForMatch: (matchId: string) =>
     request<{ drafts: AiDraftSummary[] }>(`/business-matches/${matchId}/ai-drafts`, {
       method: 'GET',
+    }),
+
+  // ── Human Review (SPRINT 010) — decisions recorded only; never posts ───────
+  enqueueReview: (draftId: string) =>
+    request<{ review: ReviewTask; created: boolean }>('/reviews', {
+      method: 'POST',
+      body: JSON.stringify({ draftId }),
+    }),
+  listReviews: (filter?: { status?: string; businessMatchId?: string }) => {
+    const q = new URLSearchParams();
+    if (filter?.status) q.set('status', filter.status);
+    if (filter?.businessMatchId) q.set('businessMatchId', filter.businessMatchId);
+    const qs = q.toString();
+    return request<{ reviews: ReviewTask[] }>(`/reviews${qs ? `?${qs}` : ''}`, { method: 'GET' });
+  },
+  getReview: (id: string) =>
+    request<{
+      review: ReviewTask;
+      draft: { id: string; version: number; status: string; content: string | null } | null;
+      match: { id: string; decision: string; reasons: MatchReason[] } | null;
+      opportunity: { id: string; decision: string; status: string } | null;
+      business: { id: string; name: string; slug: string; status: string } | null;
+      presentation: ReviewPresentation | null;
+      events: ReviewEvent[];
+    }>(`/reviews/${id}`, { method: 'GET' }),
+  approveReview: (id: string, reason?: string) =>
+    request<{ review: ReviewTask }>(`/reviews/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify(reason ? { reason } : {}),
+    }),
+  rejectReview: (id: string, reason?: string) =>
+    request<{ review: ReviewTask }>(`/reviews/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify(reason ? { reason } : {}),
+    }),
+  editReview: (id: string, editedContent: string) =>
+    request<{ review: ReviewTask }>(`/reviews/${id}/edit`, {
+      method: 'POST',
+      body: JSON.stringify({ editedContent }),
     }),
 };
