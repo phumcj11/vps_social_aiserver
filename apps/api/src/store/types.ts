@@ -638,6 +638,14 @@ export interface ActionJobRecord {
   blockedAt: Date | null;
   lastErrorCode: string | null;
   lastErrorMessage: string | null;
+  // SPRINT 012 execution safeguards
+  targetPostKey: string;
+  activeDedupKey: string | null;
+  successIdempotencyKey: string | null;
+  executionState: string;
+  ambiguousAt: Date | null;
+  verificationRequired: boolean;
+  lastExecutionSessionId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -655,6 +663,9 @@ export interface CreateActionJobInput {
   approvedContent: string;
   maxAttempts: number;
   blockedAt: Date | null;
+  // SPRINT 012: canonical post identity + DB-level active-dedup key.
+  targetPostKey: string;
+  activeDedupKey: string | null;
 }
 
 /**
@@ -671,6 +682,13 @@ export interface UpdateActionJobInput {
   blockedAt?: Date | null;
   lastErrorCode?: string | null;
   lastErrorMessage?: string | null;
+  // SPRINT 012
+  activeDedupKey?: string | null;
+  successIdempotencyKey?: string | null;
+  executionState?: string;
+  ambiguousAt?: Date | null;
+  verificationRequired?: boolean;
+  lastExecutionSessionId?: string | null;
 }
 
 export interface ActionJobFilter {
@@ -693,6 +711,163 @@ export interface CreateActionEventInput {
   actionJobId: string;
   event: string;
   payload: Record<string, unknown> | null;
+}
+
+// ── Execution Sessions / Evidence / Idempotency (SPRINT 012) ─────────────────
+
+export type ExecutionSessionStatus =
+  | 'created'
+  | 'preflight'
+  | 'ready_to_submit'
+  | 'submitting'
+  | 'submitted'
+  | 'verifying'
+  | 'verified'
+  | 'ambiguous'
+  | 'failed'
+  | 'cancelled'
+  | 'checkpoint_required'
+  | 'session_expired'
+  | 'account_restricted';
+
+/** Session statuses that are still "live" (block a second active session). */
+export const ACTIVE_EXECUTION_STATUSES: ExecutionSessionStatus[] = [
+  'created',
+  'preflight',
+  'ready_to_submit',
+  'submitting',
+  'submitted',
+  'verifying',
+];
+
+export type ExecutionAdapterName = 'fake' | 'playwright';
+
+export interface ExecutionSessionRecord {
+  id: string;
+  workspaceId: string;
+  actionJobId: string;
+  attemptNumber: number;
+  status: ExecutionSessionStatus;
+  adapter: ExecutionAdapterName;
+  browserProfileKey: string | null;
+  startedAt: Date | null;
+  preflightVerifiedAt: Date | null;
+  submitStartedAt: Date | null;
+  submittedAt: Date | null;
+  verificationStartedAt: Date | null;
+  verifiedAt: Date | null;
+  ambiguousAt: Date | null;
+  failedAt: Date | null;
+  cancelledAt: Date | null;
+  finishedAt: Date | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  recoveryState: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateExecutionSessionInput {
+  id: string;
+  workspaceId: string;
+  actionJobId: string;
+  attemptNumber: number;
+  adapter: ExecutionAdapterName;
+  browserProfileKey: string | null;
+}
+
+export interface UpdateExecutionSessionInput {
+  status?: ExecutionSessionStatus;
+  startedAt?: Date | null;
+  preflightVerifiedAt?: Date | null;
+  submitStartedAt?: Date | null;
+  submittedAt?: Date | null;
+  verificationStartedAt?: Date | null;
+  verifiedAt?: Date | null;
+  ambiguousAt?: Date | null;
+  failedAt?: Date | null;
+  cancelledAt?: Date | null;
+  finishedAt?: Date | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  recoveryState?: string | null;
+  activeKey?: string | null;
+}
+
+export type EvidenceType =
+  | 'pre_submit_snapshot'
+  | 'typed_content_snapshot'
+  | 'submit_snapshot'
+  | 'post_submit_screenshot'
+  | 'comment_identity'
+  | 'verification_snapshot'
+  | 'failure_snapshot';
+
+export interface ExecutionEvidenceRecord {
+  id: string;
+  workspaceId: string;
+  actionJobId: string;
+  executionSessionId: string;
+  evidenceType: EvidenceType;
+  storageKey: string | null;
+  evidenceHash: string | null;
+  facebookCommentId: string | null;
+  observedContent: string | null;
+  observedAuthor: string | null;
+  observedPostUrl: string | null;
+  observedAt: Date | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: Date;
+}
+
+export interface CreateExecutionEvidenceInput {
+  id: string;
+  workspaceId: string;
+  actionJobId: string;
+  executionSessionId: string;
+  evidenceType: EvidenceType;
+  storageKey: string | null;
+  evidenceHash: string | null;
+  facebookCommentId: string | null;
+  observedContent: string | null;
+  observedAuthor: string | null;
+  observedPostUrl: string | null;
+  observedAt: Date | null;
+  metadata: Record<string, unknown> | null;
+}
+
+export type IdempotencyStatus = 'reserved' | 'submitted' | 'verified' | 'ambiguous' | 'released';
+
+export interface IdempotencyRecord {
+  id: string;
+  workspaceId: string;
+  businessId: string;
+  targetPostKey: string;
+  actionType: ActionType;
+  actionJobId: string;
+  executionSessionId: string | null;
+  status: IdempotencyStatus;
+  facebookCommentId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateIdempotencyRecordInput {
+  id: string;
+  workspaceId: string;
+  businessId: string;
+  targetPostKey: string;
+  actionType: ActionType;
+  actionJobId: string;
+  executionSessionId: string | null;
+  idemKey: string;
+}
+
+export interface UpdateIdempotencyRecordInput {
+  status?: IdempotencyStatus;
+  facebookCommentId?: string | null;
+  executionSessionId?: string | null;
+  idemKey?: string | null;
 }
 
 export interface Store {
@@ -897,4 +1072,31 @@ export interface Store {
   // Action events (append-only)
   createActionEvent(input: CreateActionEventInput): Promise<ActionEventRecord>;
   listActionEvents(actionJobId: string): Promise<ActionEventRecord[]>;
+
+  // Execution sessions (SPRINT 012) — one active session per Action Job
+  createExecutionSession(input: CreateExecutionSessionInput): Promise<ExecutionSessionRecord>;
+  getExecutionSessionById(id: string): Promise<ExecutionSessionRecord | null>;
+  listExecutionSessionsForJob(actionJobId: string): Promise<ExecutionSessionRecord[]>;
+  getActiveExecutionSessionForJob(actionJobId: string): Promise<ExecutionSessionRecord | null>;
+  updateExecutionSession(
+    id: string,
+    input: UpdateExecutionSessionInput,
+  ): Promise<ExecutionSessionRecord | null>;
+
+  // Execution evidence (append-only)
+  createExecutionEvidence(input: CreateExecutionEvidenceInput): Promise<ExecutionEvidenceRecord>;
+  listExecutionEvidenceForSession(sessionId: string): Promise<ExecutionEvidenceRecord[]>;
+
+  // Idempotency records (SPRINT 012) — one live reservation per identity tuple
+  createIdempotencyRecord(input: CreateIdempotencyRecordInput): Promise<IdempotencyRecord>;
+  getIdempotencyRecord(
+    workspaceId: string,
+    businessId: string,
+    targetPostKey: string,
+    actionType: ActionType,
+  ): Promise<IdempotencyRecord | null>;
+  updateIdempotencyRecord(
+    id: string,
+    input: UpdateIdempotencyRecordInput,
+  ): Promise<IdempotencyRecord | null>;
 }

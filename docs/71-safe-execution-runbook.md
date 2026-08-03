@@ -1,0 +1,49 @@
+# 71 — Safe Execution Runbook
+
+How to exercise the Safe Execution Foundation **without any real Facebook write**. Under the mandated safe defaults every prepare/dry-run is **blocked**; the full pipeline is proven by tests and by the fake adapter.
+
+## Safety posture
+
+Real execution requires ALL of these, and this sprint keeps them in their safe state:
+
+| Flag | Safe default |
+| --- | --- |
+| `ACTION_ENGINE_ENABLED` | `false` |
+| `FACEBOOK_WRITE_ACTION_ENABLED` | `false` |
+| `FACEBOOK_COMMENT_ENABLED` | `false` |
+| `GLOBAL_KILL_SWITCH` | `true` |
+| `FACEBOOK_COMMENT_ADAPTER` | `fake` |
+
+Even with every flag flipped, the Playwright adapter **still refuses** (`REAL_WRITE_FORBIDDEN`) — real execution is a separate, deliberate future change, not a config flip ([ADR-026](adr/ADR-026-playwright-adapter-disabled-boundary.md)).
+
+## API
+
+- `POST /actions/:id/prepare-execution` — run one attempt. Under safe defaults returns `{ status: "blocked" }` with reasons and **no session**. There is **no "Execute Now"** endpoint.
+- `POST /actions/:id/dry-run` — fake-only diagnostic (accepts a `scenario`); does not consume the job.
+- `GET /actions/:id/execution-sessions` — sessions for a job.
+- `GET /action-executions/:sessionId` — session detail + evidence.
+- `GET /action-executions/:sessionId/evidence` — the evidence trail.
+- `POST /action-executions/:sessionId/cancel` — cancel a live session.
+- `POST /action-executions/:sessionId/recover` — classify for [recovery](69-execution-recovery.md).
+
+Prepare and recover are rate-limited; all routes are authenticated, workspace-scoped, and CSRF-guarded, and never return secrets or profile paths.
+
+## CLI
+
+```
+pnpm action:execution:prepare  --workspace <uuid> --action <uuid>
+pnpm action:execution:show     --workspace <uuid> --session <uuid>
+pnpm action:execution:evidence --workspace <uuid> --session <uuid>
+pnpm action:execution:cancel   --workspace <uuid> --session <uuid>
+pnpm action:execution:dry-run  --workspace <uuid> --action <uuid> [--scenario <name>]
+```
+
+`dry-run` is fake-only. None of these can post a real comment.
+
+## Web
+
+The Action Detail page adds an **Execution** section (Prepare Execution — blocked under defaults — and the session list); `/settings/action-executions/:id` shows a session's status, evidence, Cancel (live) and Classify Recovery (terminal). There are no Execute / Enable-Write / Kill-Switch controls.
+
+## Verifying the fake pipeline
+
+Tests run the executor with the fake adapter under an execution-enabled **test** env (kill switch off) to prove every path — verified success, each pre-submit abort, and every ambiguous/interrupt outcome — with zero risk of a real write. See `apps/api/src/execution/*.test.ts`.

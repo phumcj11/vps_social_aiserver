@@ -214,6 +214,7 @@ export class ActionCoordinator {
       actionType: job.actionType,
       targetPlatform: job.targetPlatform,
       targetUrl: job.targetUrl,
+      targetPostKey: job.targetPostKey,
       approvedContent: job.approvedContent,
     };
     // Re-evaluating THIS job — it is not a duplicate of itself.

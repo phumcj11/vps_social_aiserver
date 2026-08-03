@@ -71,6 +71,13 @@
       "when": 1785487635558,
       "tag": "0009_tiresome_chronomancer",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1785687952766,
+      "tag": "0010_furry_power_man",
+      "breakpoints": true
     }
   ]
 }

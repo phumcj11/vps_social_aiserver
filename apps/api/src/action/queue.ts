@@ -63,6 +63,10 @@ export class ActionQueue {
       status: initialStatus,
       targetPlatform: intent.targetPlatform,
       targetUrl: intent.targetUrl,
+      targetPostKey: intent.targetPostKey,
+      // DB-level guard: at most one ACTIVE (non-terminal) job per
+      // (review_task, action_type). Released to NULL when the job is terminal.
+      activeDedupKey: `${intent.reviewTaskId}:${intent.actionType}`,
       approvedContent: intent.approvedContent,
       maxAttempts,
       blockedAt: initialStatus === 'blocked' ? new Date() : null,
@@ -106,7 +110,9 @@ export class ActionQueue {
     return this.transition(
       job,
       'cancelled',
-      { cancelledAt: new Date() },
+      // Terminal → release the active-dedup key so a future intent for the same
+      // review+type is not permanently blocked by the DB unique index.
+      { cancelledAt: new Date(), activeDedupKey: null },
       ActionEventType.Cancelled,
       {
         from: job.status,
@@ -139,7 +145,9 @@ export class ActionQueue {
     return this.transition(
       job,
       'succeeded',
-      { completedAt: new Date() },
+      // Terminal → release the active-dedup key. The permanent success guard is
+      // carried by successIdempotencyKey, set by the executor on VERIFIED success.
+      { completedAt: new Date(), activeDedupKey: null },
       ActionEventType.Succeeded,
       null,
     );

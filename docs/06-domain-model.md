@@ -196,23 +196,32 @@ The core of the model is the **Business**. **Facebook** appears only through the
 - **Invariants:** Only an APPROVED review creates a job; at most one **active** job per (review, action type); **intent is immutable** — approved content and target are never silently altered; execution disabled by default (engine off + writes off + kill switch on ⇒ blocked); bounded retries (BR-39, BR-41); subject to the Kill Switch (BR-56); workspace-scoped (cross-workspace → 404). A job **posts nothing** this sprint.
 - **Implementation status:** Implemented in SPRINT 011 — tables `action_jobs` and `action_events` (migration `0009`); modules ActionIntentBuilder, ActionPolicyGuard, ActionQueue, ActionRepository, ActionCoordinator. No Action Worker; no Facebook/Playwright/Telegram call. See [59-action-queue-engine.md](59-action-queue-engine.md), [61-action-policy-guard.md](61-action-policy-guard.md).
 
-## Comment Attempt
+## Comment Attempt (Execution Session)
 
-- **Purpose:** A single try at publishing the comment via Playwright.
-- **Owner:** One Comment Job.
-- **Important attributes:** Attempt number, start/end time, outcome, error classification (if failed), verification result.
-- **Relationships:** Belongs to one Comment Job; a successful attempt has Screenshot Evidence.
-- **Lifecycle:** Started → published → verified → succeeded, or → failed/interrupted.
-- **Invariants:** Every attempt is recorded (BR-42); a success must be verified and evidenced (BR-44).
+- **Purpose:** A single try at publishing the comment. Implemented as an **Execution Session** (SPRINT 012).
+- **Owner:** One Action Job.
+- **Important attributes:** Attempt number, adapter (`fake`/`playwright`), status, per-state timestamps, error/recovery classification, active-key (nullable-unique → one active session per job).
+- **Relationships:** Belongs to one Action Job; has append-only Execution Evidence.
+- **Lifecycle:** `created → preflight → ready_to_submit → submitting → submitted → verifying → verified`, with `failed`/`cancelled`/`ambiguous`/interrupt off-ramps. `verified` is the ONLY success.
+- **Invariants:** Every attempt is recorded (BR-42); a success must be verified and evidenced (BR-44); ambiguity never auto-retries. This sprint runs only the **fake** adapter — no real write.
+- **Implementation status (SPRINT 012):** tables `action_execution_sessions` and `action_execution_evidence` (migration `0010`); see [66-execution-session-lifecycle.md](66-execution-session-lifecycle.md), [ADR-025](adr/ADR-025-execution-session-and-verification.md).
 
-## Screenshot Evidence
+## Action Idempotency Record
 
-- **Purpose:** Visual proof that a comment was published.
-- **Owner:** One Comment Attempt (within a Workspace).
-- **Important attributes:** Image reference, capture time, attempt reference.
-- **Relationships:** Belongs to one successful Comment Attempt.
-- **Lifecycle:** Captured on verified success → retained.
-- **Invariants:** Required for every successful comment (BR-43); stored securely and workspace-scoped (BR-45).
+- **Purpose:** Database-level guard that at most one successful comment exists per (business, target post, action type).
+- **Owner:** One Workspace; references a Business, target post identity, and Action Job.
+- **Important attributes:** `target_post_key` (deterministic hash of the canonical post), status (`reserved`/`submitted`/`verified`/`ambiguous`/`released`), nullable-unique `idem_key`.
+- **Lifecycle:** `reserved → submitted → verified` (key kept live), or `released` (key → NULL) after a provably pre-submit failure; `ambiguous` keeps the key live pending human recovery.
+- **Invariants:** Concurrent duplicate reservations are impossible (unique index); a verified record permanently blocks new attempts. See [70-database-idempotency.md](70-database-idempotency.md), [ADR-024](adr/ADR-024-database-level-idempotency.md).
+
+## Execution Evidence (Screenshot Evidence)
+
+- **Purpose:** An append-only trail of what an attempt observed — corroborating, never the decision itself (a screenshot alone is never proof of success).
+- **Owner:** One Execution Session (within a Workspace).
+- **Important attributes:** Evidence type, **opaque relative storage key** (never an absolute path), content hash, observed comment id/content/author, capture time.
+- **Relationships:** Belongs to one Execution Session.
+- **Lifecycle:** Recorded at each step (pre-submit, typed-content, submit, comment-identity, verification/failure snapshots) → retained.
+- **Invariants:** Required corroboration for a verified comment (BR-43); stored securely, workspace-scoped, traversal-protected (BR-45); holds no secrets. This sprint captures only **synthetic** evidence. See [67-execution-evidence.md](67-execution-evidence.md).
 
 ## Telegram Destination
 

@@ -186,15 +186,36 @@ try {
   mustEqual('GLOBAL_KILL_SWITCH', 'true');
   mustEqual('COMMENT_APPROVAL_REQUIRED', 'true');
 
+  // Action Queue / execution disabled by default (SPRINT 011/012).
+  mustEqual('ACTION_ENGINE_ENABLED', 'false');
+  // Facebook Comment execution adapter MUST default to the fake (SPRINT 012).
+  mustEqual('FACEBOOK_COMMENT_ADAPTER', 'fake');
+  mustEqual('ACTION_AMBIGUOUS_AUTO_RETRY', 'false');
+
   // Conservative concurrency.
   mustEqual('PLAYWRIGHT_CONCURRENCY', '1');
   mustEqual('SCANNER_CONCURRENCY', '1');
   mustEqual('COMMENT_CONCURRENCY', '1');
+  mustEqual('ACTION_EXECUTION_CONCURRENCY', '1');
 
   // External integrations disabled.
   mustEqual('AI_ENABLED', 'false');
   mustEqual('TELEGRAM_ENABLED', 'false');
   mustEqual('N8N_ENABLED', 'false');
+
+  // MySQL credentials must not be the default/weak placeholders (ARV-1.0 H3).
+  // .env.example may contain placeholders, but a real .env must not — and
+  // production startup refuses them (see loadApiEnv / hasWeakDbCredential).
+  const weak = ['change_me', 'change_me_root', 'password', 'root'];
+  const dbUrl = (env.DATABASE_URL ?? '').toLowerCase();
+  if (weak.some((w) => dbUrl.includes(`:${w}@`))) {
+    warn(
+      'DATABASE_URL uses a placeholder credential in .env.example',
+      'production startup rejects weak/default DB credentials; set a strong password in .env',
+    );
+  } else {
+    pass('DATABASE_URL has no weak placeholder credential');
+  }
 } catch (error) {
   fail('.env.example unreadable', String(error));
 }

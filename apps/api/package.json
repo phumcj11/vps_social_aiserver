@@ -33,7 +33,12 @@
     "action:show": "tsx src/action/cli.ts show",
     "action:cancel": "tsx src/action/cli.ts cancel",
     "action:retry": "tsx src/action/cli.ts retry",
-    "action:recheck": "tsx src/action/cli.ts recheck"
+    "action:recheck": "tsx src/action/cli.ts recheck",
+    "action:execution:prepare": "tsx src/execution/cli.ts prepare",
+    "action:execution:show": "tsx src/execution/cli.ts show",
+    "action:execution:evidence": "tsx src/execution/cli.ts evidence",
+    "action:execution:cancel": "tsx src/execution/cli.ts cancel",
+    "action:execution:dry-run": "tsx src/execution/cli.ts dry-run"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",

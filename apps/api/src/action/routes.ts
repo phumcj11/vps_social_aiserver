@@ -105,6 +105,13 @@ export function registerActionRoutes(app: FastifyInstance, deps: ActionRouteDeps
   const authenticate = createAuthenticate(store, env);
   const csrfGuard = createCsrfGuard(env);
 
+  const createRateLimit = {
+    rateLimit: {
+      max: env.ACTION_CREATE_RATE_LIMIT_MAX,
+      timeWindow: env.ACTION_CREATE_RATE_LIMIT_WINDOW_SECONDS * 1000,
+    },
+  };
+
   async function requireWorkspaceId(req: FastifyRequest): Promise<string> {
     const ws = await store.getWorkspaceByOwner(req.authUser!.id);
     if (!ws) throw errors.conflict('workspace_required', 'Create a workspace first');
@@ -112,24 +119,28 @@ export function registerActionRoutes(app: FastifyInstance, deps: ActionRouteDeps
   }
 
   // POST /actions — create an Action Job from an APPROVED Review Task.
-  app.post('/actions', { preHandler: [csrfGuard, authenticate] }, async (req, reply) => {
-    noStore(reply);
-    const workspaceId = await requireWorkspaceId(req);
-    const parsed = createSchema.safeParse(req.body);
-    if (!parsed.success)
-      throw errors.validation('A valid reviewTaskId (and action type) is required');
-    try {
-      const result = await actions.createFromReview(
-        workspaceId,
-        parsed.data.reviewTaskId,
-        parsed.data.actionType,
-      );
-      reply.code(201);
-      return { action: publicJob(result.job), policy: result.policy };
-    } catch (err) {
-      toHttp(err);
-    }
-  });
+  app.post(
+    '/actions',
+    { preHandler: [csrfGuard, authenticate], config: createRateLimit },
+    async (req, reply) => {
+      noStore(reply);
+      const workspaceId = await requireWorkspaceId(req);
+      const parsed = createSchema.safeParse(req.body);
+      if (!parsed.success)
+        throw errors.validation('A valid reviewTaskId (and action type) is required');
+      try {
+        const result = await actions.createFromReview(
+          workspaceId,
+          parsed.data.reviewTaskId,
+          parsed.data.actionType,
+        );
+        reply.code(201);
+        return { action: publicJob(result.job), policy: result.policy };
+      } catch (err) {
+        toHttp(err);
+      }
+    },
+  );
 
   // GET /actions — the action queue + status counts (optional filters).
   app.get('/actions', { preHandler: authenticate }, async (req, reply) => {

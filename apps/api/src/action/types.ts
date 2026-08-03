@@ -23,7 +23,10 @@ export interface ActionIntent {
   businessMatchId: string;
   actionType: ActionType;
   targetPlatform: TargetPlatform;
+  /** Canonicalized Facebook post URL (query/fragment normalized). */
   targetUrl: string;
+  /** Deterministic identity hash of the target post (never the raw URL). */
+  targetPostKey: string;
   approvedContent: string;
 }
 

@@ -8,9 +8,9 @@ AI drafts; a human approves. Every AI-generated output is treated as a proposal 
 
 ## Status
 
-**Stage:** SPRINT 000 — Product Foundation — *Complete (pending Product Owner review).*
+**Stage:** SPRINT 012 — Facebook Comment Adapter and Safe Execution Foundation — *Complete (not committed).*
 
-The project is in its foundation stage. There is no application code yet. SPRINT -1 established the workspace; SPRINT 000 produced the complete product foundation as documentation — vision, scope, rules, domain model, architecture, UX, AI/Playwright/Telegram designs, roadmap, and the first product ADRs. The product itself: KMKT Social AI helps business owners discover customer-intent posts in Facebook Groups, generate business-specific AI comment drafts, review them via Telegram, and publish approved comments through Playwright — with full auditability and a global kill switch. See [docs/current-sprint.md](docs/current-sprint.md) and [docs/13-product-memory.md](docs/13-product-memory.md).
+The product: KMKT Social AI helps business owners discover customer-intent posts in Facebook Groups, generate business-specific AI comment drafts, review them via Telegram, and publish approved comments through Playwright — with full auditability and a global kill switch. The pipeline is built through SPRINT 012: authentication & workspaces, the Business domain, Facebook connection & groups, the read-only Collector, the deterministic Opportunity Classifier and Business Matcher, the AI Draft Engine (AI disabled by default), the Human Review Engine, the Action Queue Engine, and now the **Safe Execution Foundation** — an executor, a narrow Facebook Comment Adapter (deterministic fake default; disabled Playwright boundary), Execution Sessions, evidence, verification, recovery, and database-level idempotency. **No real Facebook write executes** — real execution stays disabled, the kill switch stays on, and every `prepare-execution` is blocked under safe defaults. See [docs/current-sprint.md](docs/current-sprint.md) and [docs/13-product-memory.md](docs/13-product-memory.md).
 
 ---
 

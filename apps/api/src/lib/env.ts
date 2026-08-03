@@ -104,6 +104,31 @@ export const apiEnvSchema = z.object({
   FACEBOOK_WRITE_ACTION_ENABLED: booleanish(false),
   FACEBOOK_COMMENT_ENABLED: booleanish(false),
   GLOBAL_KILL_SWITCH: booleanish(true),
+
+  // Playwright browser concurrency — MUST stay 1 on the MVP VPS (one Chromium
+  // at a time). Collector and Comment Executor share the single slot.
+  PLAYWRIGHT_CONCURRENCY: intFromString(1),
+
+  // Facebook Comment Adapter / Safe Execution Foundation (SPRINT 012). The
+  // adapter defaults to the deterministic FAKE (no network, no Playwright). The
+  // real 'playwright' adapter REFUSES to submit unless every enablement flag is
+  // intentionally set (see PlaywrightFacebookCommentAdapter). No real write this
+  // sprint. Ambiguous results NEVER auto-retry.
+  FACEBOOK_COMMENT_ADAPTER: z.enum(['fake', 'playwright']).default('fake'),
+  FACEBOOK_COMMENT_EXECUTION_TIMEOUT_MS: intFromString(90_000),
+  FACEBOOK_COMMENT_VERIFY_TIMEOUT_MS: intFromString(30_000),
+  FACEBOOK_COMMENT_MAX_ATTEMPTS: intFromString(1),
+  ACTION_EVIDENCE_RETENTION_DAYS: intFromString(30),
+  ACTION_AMBIGUOUS_AUTO_RETRY: booleanish(false),
+
+  // Per-route rate limits for the write/expensive endpoints (SPRINT 012). Each
+  // is a max-per-window guard on top of auth; windows are in seconds.
+  ACTION_CREATE_RATE_LIMIT_MAX: intFromString(30),
+  ACTION_CREATE_RATE_LIMIT_WINDOW_SECONDS: intFromString(60),
+  EXECUTION_PREPARE_RATE_LIMIT_MAX: intFromString(10),
+  EXECUTION_PREPARE_RATE_LIMIT_WINDOW_SECONDS: intFromString(60),
+  EXECUTION_RECOVER_RATE_LIMIT_MAX: intFromString(10),
+  EXECUTION_RECOVER_RATE_LIMIT_WINDOW_SECONDS: intFromString(60),
 });
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>;
@@ -120,8 +145,25 @@ export function loadApiEnv(source: Record<string, string | undefined> = process.
   // In production the session cookie must always be Secure.
   if (env.APP_ENV === 'production') {
     env.SESSION_COOKIE_SECURE = true;
+    // Refuse to start production with default/weak DB credentials (ARV-1.0 H3).
+    // Development placeholders are tolerated only outside production.
+    if (hasWeakDbCredential(env.DATABASE_URL)) {
+      throw new Error(
+        'Refusing to start: DATABASE_URL uses a default/weak placeholder credential ' +
+          '(e.g. change_me). Set strong MySQL credentials in .env before production.',
+      );
+    }
   }
   return env;
+}
+
+/** Known unsafe placeholder credentials that must never reach production. */
+const WEAK_DB_CREDENTIALS = ['change_me', 'change_me_root', 'password', 'root', 'mysql'];
+
+/** True when a MySQL connection string contains a default/weak placeholder password. */
+export function hasWeakDbCredential(databaseUrl: string): boolean {
+  const lower = databaseUrl.toLowerCase();
+  return WEAK_DB_CREDENTIALS.some((weak) => lower.includes(`:${weak}@`));
 }
 
 /** True when a session cookie should carry the Secure attribute. */

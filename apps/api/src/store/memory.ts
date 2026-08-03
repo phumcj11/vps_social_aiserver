@@ -70,7 +70,17 @@ import type {
   ActionEventRecord,
   CreateActionEventInput,
 } from './types';
-import { ACTIVE_ACTION_STATUSES } from './types';
+import type {
+  ExecutionSessionRecord,
+  CreateExecutionSessionInput,
+  UpdateExecutionSessionInput,
+  ExecutionEvidenceRecord,
+  CreateExecutionEvidenceInput,
+  IdempotencyRecord,
+  CreateIdempotencyRecordInput,
+  UpdateIdempotencyRecordInput,
+} from './types';
+import { ACTIVE_ACTION_STATUSES, ACTIVE_EXECUTION_STATUSES } from './types';
 
 /**
  * In-memory Store implementation for tests. Not used at runtime.
@@ -102,6 +112,11 @@ export class InMemoryStore implements Store {
   private reviewEvents: ReviewEventRecord[] = [];
   private actionJobs = new Map<string, ActionJobRecord>(); // keyed by id
   private actionEvents: ActionEventRecord[] = [];
+  private executionSessions = new Map<string, ExecutionSessionRecord>(); // keyed by id
+  private executionSessionActiveKey = new Map<string, string>(); // activeKey → sessionId
+  private executionEvidence: ExecutionEvidenceRecord[] = [];
+  private idempotencyRecords = new Map<string, IdempotencyRecord>(); // keyed by id
+  private idempotencyKeyIndex = new Map<string, string>(); // idemKey → recordId
 
   private now(): Date {
     return new Date();
@@ -1245,14 +1260,13 @@ export class InMemoryStore implements Store {
   // ── Action jobs (SPRINT 011) ───────────────────────────────────────────────
 
   async createActionJob(input: CreateActionJobInput): Promise<ActionJobRecord> {
-    // At most one ACTIVE job per (review task, action type).
-    for (const j of this.actionJobs.values()) {
-      if (
-        j.reviewTaskId === input.reviewTaskId &&
-        j.actionType === input.actionType &&
-        ACTIVE_ACTION_STATUSES.includes(j.status)
-      ) {
-        throw new Error('duplicate active action job for review task and type');
+    // DB-level guarantee (mirrored here): at most one row with a given non-null
+    // active_dedup_key — enforces one ACTIVE job per (review task, action type).
+    if (input.activeDedupKey !== null) {
+      for (const j of this.actionJobs.values()) {
+        if (j.activeDedupKey !== null && j.activeDedupKey === input.activeDedupKey) {
+          throw new Error('duplicate active action job (active_dedup_key unique)');
+        }
       }
     }
     const now = this.now();
@@ -1276,6 +1290,13 @@ export class InMemoryStore implements Store {
       blockedAt: input.blockedAt,
       lastErrorCode: null,
       lastErrorMessage: null,
+      targetPostKey: input.targetPostKey,
+      activeDedupKey: input.activeDedupKey,
+      successIdempotencyKey: null,
+      executionState: 'none',
+      ambiguousAt: null,
+      verificationRequired: false,
+      lastExecutionSessionId: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -1331,6 +1352,42 @@ export class InMemoryStore implements Store {
     if (input.blockedAt !== undefined) j.blockedAt = input.blockedAt;
     if (input.lastErrorCode !== undefined) j.lastErrorCode = input.lastErrorCode;
     if (input.lastErrorMessage !== undefined) j.lastErrorMessage = input.lastErrorMessage;
+    if (input.activeDedupKey !== undefined) {
+      // Honour the nullable-unique guarantee on updates too.
+      if (input.activeDedupKey !== null) {
+        for (const other of this.actionJobs.values()) {
+          if (
+            other.id !== id &&
+            other.activeDedupKey !== null &&
+            other.activeDedupKey === input.activeDedupKey
+          ) {
+            throw new Error('duplicate active action job (active_dedup_key unique)');
+          }
+        }
+      }
+      j.activeDedupKey = input.activeDedupKey;
+    }
+    if (input.successIdempotencyKey !== undefined) {
+      if (input.successIdempotencyKey !== null) {
+        for (const other of this.actionJobs.values()) {
+          if (
+            other.id !== id &&
+            other.successIdempotencyKey !== null &&
+            other.successIdempotencyKey === input.successIdempotencyKey
+          ) {
+            throw new Error('duplicate successful comment (success_idempotency_key unique)');
+          }
+        }
+      }
+      j.successIdempotencyKey = input.successIdempotencyKey;
+    }
+    if (input.executionState !== undefined) j.executionState = input.executionState;
+    if (input.ambiguousAt !== undefined) j.ambiguousAt = input.ambiguousAt;
+    if (input.verificationRequired !== undefined)
+      j.verificationRequired = input.verificationRequired;
+    if (input.lastExecutionSessionId !== undefined) {
+      j.lastExecutionSessionId = input.lastExecutionSessionId;
+    }
     j.updatedAt = this.now();
     return { ...j };
   }
@@ -1352,5 +1409,191 @@ export class InMemoryStore implements Store {
       .filter((e) => e.actionJobId === actionJobId)
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
       .map((e) => ({ ...e }));
+  }
+
+  // ── Execution sessions (SPRINT 012) ────────────────────────────────────────
+
+  async createExecutionSession(
+    input: CreateExecutionSessionInput,
+  ): Promise<ExecutionSessionRecord> {
+    // A new session is created ACTIVE (activeKey = actionJobId); enforce one.
+    if (this.executionSessionActiveKey.has(input.actionJobId)) {
+      throw new Error('active execution session already exists for action job');
+    }
+    for (const s of this.executionSessions.values()) {
+      if (s.actionJobId === input.actionJobId && s.attemptNumber === input.attemptNumber) {
+        throw new Error('duplicate execution session attempt for action job');
+      }
+    }
+    const now = this.now();
+    const record: ExecutionSessionRecord = {
+      id: input.id,
+      workspaceId: input.workspaceId,
+      actionJobId: input.actionJobId,
+      attemptNumber: input.attemptNumber,
+      status: 'created',
+      adapter: input.adapter,
+      browserProfileKey: input.browserProfileKey,
+      startedAt: null,
+      preflightVerifiedAt: null,
+      submitStartedAt: null,
+      submittedAt: null,
+      verificationStartedAt: null,
+      verifiedAt: null,
+      ambiguousAt: null,
+      failedAt: null,
+      cancelledAt: null,
+      finishedAt: null,
+      errorCode: null,
+      errorMessage: null,
+      recoveryState: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.executionSessions.set(record.id, record);
+    this.executionSessionActiveKey.set(input.actionJobId, record.id);
+    return { ...record };
+  }
+
+  async getExecutionSessionById(id: string): Promise<ExecutionSessionRecord | null> {
+    const s = this.executionSessions.get(id);
+    return s ? { ...s } : null;
+  }
+
+  async listExecutionSessionsForJob(actionJobId: string): Promise<ExecutionSessionRecord[]> {
+    return [...this.executionSessions.values()]
+      .filter((s) => s.actionJobId === actionJobId)
+      .sort((a, b) => a.attemptNumber - b.attemptNumber)
+      .map((s) => ({ ...s }));
+  }
+
+  async getActiveExecutionSessionForJob(
+    actionJobId: string,
+  ): Promise<ExecutionSessionRecord | null> {
+    const id = this.executionSessionActiveKey.get(actionJobId);
+    if (!id) return null;
+    const s = this.executionSessions.get(id);
+    return s ? { ...s } : null;
+  }
+
+  async updateExecutionSession(
+    id: string,
+    input: UpdateExecutionSessionInput,
+  ): Promise<ExecutionSessionRecord | null> {
+    const s = this.executionSessions.get(id);
+    if (!s) return null;
+    if (input.status !== undefined) s.status = input.status;
+    for (const key of [
+      'startedAt',
+      'preflightVerifiedAt',
+      'submitStartedAt',
+      'submittedAt',
+      'verificationStartedAt',
+      'verifiedAt',
+      'ambiguousAt',
+      'failedAt',
+      'cancelledAt',
+      'finishedAt',
+    ] as const) {
+      if (input[key] !== undefined) s[key] = input[key]!;
+    }
+    if (input.errorCode !== undefined) s.errorCode = input.errorCode;
+    if (input.errorMessage !== undefined) s.errorMessage = input.errorMessage;
+    if (input.recoveryState !== undefined) s.recoveryState = input.recoveryState;
+    // activeKey maintenance: when a session leaves the active set, release it.
+    if (input.status !== undefined && !ACTIVE_EXECUTION_STATUSES.includes(input.status)) {
+      if (this.executionSessionActiveKey.get(s.actionJobId) === s.id) {
+        this.executionSessionActiveKey.delete(s.actionJobId);
+      }
+    }
+    s.updatedAt = this.now();
+    return { ...s };
+  }
+
+  async createExecutionEvidence(
+    input: CreateExecutionEvidenceInput,
+  ): Promise<ExecutionEvidenceRecord> {
+    const record: ExecutionEvidenceRecord = {
+      id: input.id,
+      workspaceId: input.workspaceId,
+      actionJobId: input.actionJobId,
+      executionSessionId: input.executionSessionId,
+      evidenceType: input.evidenceType,
+      storageKey: input.storageKey,
+      evidenceHash: input.evidenceHash,
+      facebookCommentId: input.facebookCommentId,
+      observedContent: input.observedContent,
+      observedAuthor: input.observedAuthor,
+      observedPostUrl: input.observedPostUrl,
+      observedAt: input.observedAt,
+      metadata: input.metadata,
+      createdAt: this.now(),
+    };
+    this.executionEvidence.push(record);
+    return { ...record };
+  }
+
+  async listExecutionEvidenceForSession(sessionId: string): Promise<ExecutionEvidenceRecord[]> {
+    return this.executionEvidence
+      .filter((e) => e.executionSessionId === sessionId)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .map((e) => ({ ...e }));
+  }
+
+  // ── Idempotency records (SPRINT 012) ───────────────────────────────────────
+
+  async createIdempotencyRecord(input: CreateIdempotencyRecordInput): Promise<IdempotencyRecord> {
+    if (this.idempotencyKeyIndex.has(input.idemKey)) {
+      throw new Error('duplicate idempotency reservation (idem_key unique)');
+    }
+    const now = this.now();
+    const record: IdempotencyRecord = {
+      id: input.id,
+      workspaceId: input.workspaceId,
+      businessId: input.businessId,
+      targetPostKey: input.targetPostKey,
+      actionType: input.actionType,
+      actionJobId: input.actionJobId,
+      executionSessionId: input.executionSessionId,
+      status: 'reserved',
+      facebookCommentId: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.idempotencyRecords.set(record.id, record);
+    this.idempotencyKeyIndex.set(input.idemKey, record.id);
+    return { ...record };
+  }
+
+  async getIdempotencyRecord(
+    workspaceId: string,
+    businessId: string,
+    targetPostKey: string,
+    actionType: ActionType,
+  ): Promise<IdempotencyRecord | null> {
+    // Only a LIVE reservation (idemKey present) counts; released rows are freed.
+    const liveKey = `${workspaceId}:${businessId}:${targetPostKey}:${actionType}`;
+    const id = this.idempotencyKeyIndex.get(liveKey);
+    if (!id) return null;
+    const r = this.idempotencyRecords.get(id);
+    return r ? { ...r } : null;
+  }
+
+  async updateIdempotencyRecord(
+    id: string,
+    input: UpdateIdempotencyRecordInput,
+  ): Promise<IdempotencyRecord | null> {
+    const r = this.idempotencyRecords.get(id);
+    if (!r) return null;
+    if (input.status !== undefined) r.status = input.status;
+    if (input.facebookCommentId !== undefined) r.facebookCommentId = input.facebookCommentId;
+    if (input.executionSessionId !== undefined) r.executionSessionId = input.executionSessionId;
+    // idemKey → null releases the live slot (allows a new reservation).
+    if (input.idemKey !== undefined) {
+      const liveKey = `${r.workspaceId}:${r.businessId}:${r.targetPostKey}:${r.actionType}`;
+      if (input.idemKey === null) this.idempotencyKeyIndex.delete(liveKey);
+    }
+    r.updatedAt = this.now();
+    return { ...r };
   }
 }

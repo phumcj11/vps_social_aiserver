@@ -8,13 +8,7 @@ import type {
 } from '../store/types';
 import type { ActionIntent } from './types';
 import { ActionError, ActionErrorCode } from './errors';
-
-/**
- * A supported Facebook post URL — https, on facebook.com, with a real path.
- * We deliberately accept only Facebook post/group URLs (the Signal's post URL),
- * never arbitrary or non-https links.
- */
-const FACEBOOK_POST_URL_RE = /^https:\/\/(?:www\.|m\.|web\.|mbasic\.)?facebook\.com\/[^\s]+$/i;
+import { parseCanonicalFacebookPostUrl, CanonicalUrlError } from './canonical-url';
 
 export interface IntentBuilderInput {
   workspaceId: string;
@@ -67,13 +61,24 @@ export function buildActionIntent(input: IntentBuilderInput): ActionIntent {
     throw new ActionError(ActionErrorCode.MISSING_CONTENT, 'Approved content is empty');
   }
 
-  // Safe target URL — the Signal's Facebook post URL only.
-  const targetUrl = signal.postUrl?.trim() ?? '';
-  if (!FACEBOOK_POST_URL_RE.test(targetUrl)) {
-    throw new ActionError(
-      ActionErrorCode.UNSAFE_TARGET_URL,
-      'Target URL is not a supported Facebook post URL',
-    );
+  // Safe target URL — the Signal's Facebook post URL only. Strict `URL` parsing
+  // (SPRINT 012) replaces the old regex; it also derives the deterministic
+  // targetPostKey used for database-level idempotency.
+  const rawUrl = signal.postUrl?.trim() ?? '';
+  let canonicalUrl: string;
+  let targetPostKey: string;
+  try {
+    const parsed = parseCanonicalFacebookPostUrl(rawUrl);
+    canonicalUrl = parsed.canonicalUrl;
+    targetPostKey = parsed.targetPostKey;
+  } catch (err) {
+    if (err instanceof CanonicalUrlError) {
+      throw new ActionError(
+        ActionErrorCode.UNSAFE_TARGET_URL,
+        `Target URL is not a supported Facebook post URL: ${err.message}`,
+      );
+    }
+    throw err;
   }
 
   return {
@@ -83,7 +88,8 @@ export function buildActionIntent(input: IntentBuilderInput): ActionIntent {
     businessMatchId: match.id,
     actionType,
     targetPlatform: 'facebook',
-    targetUrl,
+    targetUrl: canonicalUrl,
+    targetPostKey,
     approvedContent,
   };
 }

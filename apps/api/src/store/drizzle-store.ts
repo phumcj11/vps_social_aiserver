@@ -25,6 +25,9 @@ import {
   reviewEvents,
   actionJobs,
   actionEvents,
+  actionExecutionSessions,
+  actionExecutionEvidence,
+  actionIdempotencyRecords,
 } from '../db/schema';
 import type {
   Store,
@@ -104,8 +107,20 @@ import type {
   ActionJobFilter,
   ActionEventRecord,
   CreateActionEventInput,
+  ExecutionSessionRecord,
+  ExecutionSessionStatus,
+  ExecutionAdapterName,
+  CreateExecutionSessionInput,
+  UpdateExecutionSessionInput,
+  ExecutionEvidenceRecord,
+  EvidenceType,
+  CreateExecutionEvidenceInput,
+  IdempotencyRecord,
+  IdempotencyStatus,
+  CreateIdempotencyRecordInput,
+  UpdateIdempotencyRecordInput,
 } from './types';
-import { ACTIVE_ACTION_STATUSES } from './types';
+import { ACTIVE_ACTION_STATUSES, ACTIVE_EXECUTION_STATUSES } from './types';
 
 /** Parse a JSON-encoded string array column, tolerating null/invalid. */
 function parseStringArray(value: string | null): string[] {
@@ -1719,6 +1734,8 @@ export class DrizzleStore implements Store {
       approvedContent: input.approvedContent,
       maxAttempts: input.maxAttempts,
       blockedAt: input.blockedAt,
+      targetPostKey: input.targetPostKey,
+      activeDedupKey: input.activeDedupKey,
     });
     const created = await this.getActionJobById(input.id);
     if (!created) throw new Error('action job creation failed');
@@ -1775,6 +1792,18 @@ export class DrizzleStore implements Store {
     if (input.blockedAt !== undefined) set.blockedAt = input.blockedAt;
     if (input.lastErrorCode !== undefined) set.lastErrorCode = input.lastErrorCode;
     if (input.lastErrorMessage !== undefined) set.lastErrorMessage = input.lastErrorMessage;
+    if (input.activeDedupKey !== undefined) set.activeDedupKey = input.activeDedupKey;
+    if (input.successIdempotencyKey !== undefined) {
+      set.successIdempotencyKey = input.successIdempotencyKey;
+    }
+    if (input.executionState !== undefined) set.executionState = input.executionState;
+    if (input.ambiguousAt !== undefined) set.ambiguousAt = input.ambiguousAt;
+    if (input.verificationRequired !== undefined) {
+      set.verificationRequired = input.verificationRequired;
+    }
+    if (input.lastExecutionSessionId !== undefined) {
+      set.lastExecutionSessionId = input.lastExecutionSessionId;
+    }
     if (Object.keys(set).length > 0) {
       await this.db.update(actionJobs).set(set).where(eq(actionJobs.id, id));
     }
@@ -1827,6 +1856,13 @@ export class DrizzleStore implements Store {
       blockedAt: row.blockedAt,
       lastErrorCode: row.lastErrorCode,
       lastErrorMessage: row.lastErrorMessage,
+      targetPostKey: row.targetPostKey ?? '',
+      activeDedupKey: row.activeDedupKey,
+      successIdempotencyKey: row.successIdempotencyKey,
+      executionState: row.executionState,
+      ambiguousAt: row.ambiguousAt,
+      verificationRequired: row.verificationRequired,
+      lastExecutionSessionId: row.lastExecutionSessionId,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
@@ -1839,6 +1875,256 @@ export class DrizzleStore implements Store {
       event: row.event,
       payload: this.parseJsonObject(row.payload),
       createdAt: row.createdAt,
+    };
+  }
+
+  // ── Execution sessions / evidence / idempotency (SPRINT 012) ───────────────
+
+  async createExecutionSession(
+    input: CreateExecutionSessionInput,
+  ): Promise<ExecutionSessionRecord> {
+    // activeKey = actionJobId while active → DB-unique enforces one active session.
+    await this.db.insert(actionExecutionSessions).values({
+      id: input.id,
+      workspaceId: input.workspaceId,
+      actionJobId: input.actionJobId,
+      attemptNumber: input.attemptNumber,
+      status: 'created',
+      adapter: input.adapter,
+      browserProfileKey: input.browserProfileKey,
+      activeKey: input.actionJobId,
+    });
+    const created = await this.getExecutionSessionById(input.id);
+    if (!created) throw new Error('execution session creation failed');
+    return created;
+  }
+
+  async getExecutionSessionById(id: string): Promise<ExecutionSessionRecord | null> {
+    const rows = await this.db
+      .select()
+      .from(actionExecutionSessions)
+      .where(eq(actionExecutionSessions.id, id))
+      .limit(1);
+    return rows[0] ? this.toExecutionSession(rows[0]) : null;
+  }
+
+  async listExecutionSessionsForJob(actionJobId: string): Promise<ExecutionSessionRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(actionExecutionSessions)
+      .where(eq(actionExecutionSessions.actionJobId, actionJobId))
+      .orderBy(actionExecutionSessions.attemptNumber);
+    return rows.map((r) => this.toExecutionSession(r));
+  }
+
+  async getActiveExecutionSessionForJob(
+    actionJobId: string,
+  ): Promise<ExecutionSessionRecord | null> {
+    const rows = await this.db
+      .select()
+      .from(actionExecutionSessions)
+      .where(eq(actionExecutionSessions.activeKey, actionJobId))
+      .limit(1);
+    return rows[0] ? this.toExecutionSession(rows[0]) : null;
+  }
+
+  async updateExecutionSession(
+    id: string,
+    input: UpdateExecutionSessionInput,
+  ): Promise<ExecutionSessionRecord | null> {
+    const set: Partial<typeof actionExecutionSessions.$inferInsert> = {};
+    if (input.status !== undefined) {
+      set.status = input.status;
+      // Release the active slot when the session becomes terminal.
+      if (!ACTIVE_EXECUTION_STATUSES.includes(input.status)) set.activeKey = null;
+    }
+    if (input.startedAt !== undefined) set.startedAt = input.startedAt;
+    if (input.preflightVerifiedAt !== undefined)
+      set.preflightVerifiedAt = input.preflightVerifiedAt;
+    if (input.submitStartedAt !== undefined) set.submitStartedAt = input.submitStartedAt;
+    if (input.submittedAt !== undefined) set.submittedAt = input.submittedAt;
+    if (input.verificationStartedAt !== undefined) {
+      set.verificationStartedAt = input.verificationStartedAt;
+    }
+    if (input.verifiedAt !== undefined) set.verifiedAt = input.verifiedAt;
+    if (input.ambiguousAt !== undefined) set.ambiguousAt = input.ambiguousAt;
+    if (input.failedAt !== undefined) set.failedAt = input.failedAt;
+    if (input.cancelledAt !== undefined) set.cancelledAt = input.cancelledAt;
+    if (input.finishedAt !== undefined) set.finishedAt = input.finishedAt;
+    if (input.errorCode !== undefined) set.errorCode = input.errorCode;
+    if (input.errorMessage !== undefined) set.errorMessage = input.errorMessage;
+    if (input.recoveryState !== undefined) set.recoveryState = input.recoveryState;
+    if (input.activeKey !== undefined) set.activeKey = input.activeKey;
+    if (Object.keys(set).length > 0) {
+      await this.db
+        .update(actionExecutionSessions)
+        .set(set)
+        .where(eq(actionExecutionSessions.id, id));
+    }
+    return this.getExecutionSessionById(id);
+  }
+
+  async createExecutionEvidence(
+    input: CreateExecutionEvidenceInput,
+  ): Promise<ExecutionEvidenceRecord> {
+    await this.db.insert(actionExecutionEvidence).values({
+      id: input.id,
+      workspaceId: input.workspaceId,
+      actionJobId: input.actionJobId,
+      executionSessionId: input.executionSessionId,
+      evidenceType: input.evidenceType,
+      storageKey: input.storageKey,
+      evidenceHash: input.evidenceHash,
+      facebookCommentId: input.facebookCommentId,
+      observedContent: input.observedContent,
+      observedAuthor: input.observedAuthor,
+      observedPostUrl: input.observedPostUrl,
+      observedAt: input.observedAt,
+      metadata: input.metadata ? JSON.stringify(input.metadata) : null,
+    });
+    const rows = await this.db
+      .select()
+      .from(actionExecutionEvidence)
+      .where(eq(actionExecutionEvidence.id, input.id))
+      .limit(1);
+    if (!rows[0]) throw new Error('execution evidence creation failed');
+    return this.toExecutionEvidence(rows[0]);
+  }
+
+  async listExecutionEvidenceForSession(sessionId: string): Promise<ExecutionEvidenceRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(actionExecutionEvidence)
+      .where(eq(actionExecutionEvidence.executionSessionId, sessionId))
+      .orderBy(actionExecutionEvidence.createdAt);
+    return rows.map((r) => this.toExecutionEvidence(r));
+  }
+
+  async createIdempotencyRecord(input: CreateIdempotencyRecordInput): Promise<IdempotencyRecord> {
+    await this.db.insert(actionIdempotencyRecords).values({
+      id: input.id,
+      workspaceId: input.workspaceId,
+      businessId: input.businessId,
+      targetPostKey: input.targetPostKey,
+      actionType: input.actionType,
+      actionJobId: input.actionJobId,
+      executionSessionId: input.executionSessionId,
+      status: 'reserved',
+      idemKey: input.idemKey,
+    });
+    const rows = await this.db
+      .select()
+      .from(actionIdempotencyRecords)
+      .where(eq(actionIdempotencyRecords.id, input.id))
+      .limit(1);
+    if (!rows[0]) throw new Error('idempotency record creation failed');
+    return this.toIdempotencyRecord(rows[0]);
+  }
+
+  async getIdempotencyRecord(
+    workspaceId: string,
+    businessId: string,
+    targetPostKey: string,
+    actionType: ActionType,
+  ): Promise<IdempotencyRecord | null> {
+    // A LIVE reservation is one whose idemKey is still set (not released).
+    const liveKey = `${workspaceId}:${businessId}:${targetPostKey}:${actionType}`;
+    const rows = await this.db
+      .select()
+      .from(actionIdempotencyRecords)
+      .where(eq(actionIdempotencyRecords.idemKey, liveKey))
+      .limit(1);
+    return rows[0] ? this.toIdempotencyRecord(rows[0]) : null;
+  }
+
+  async updateIdempotencyRecord(
+    id: string,
+    input: UpdateIdempotencyRecordInput,
+  ): Promise<IdempotencyRecord | null> {
+    const set: Partial<typeof actionIdempotencyRecords.$inferInsert> = {};
+    if (input.status !== undefined) set.status = input.status;
+    if (input.facebookCommentId !== undefined) set.facebookCommentId = input.facebookCommentId;
+    if (input.executionSessionId !== undefined) set.executionSessionId = input.executionSessionId;
+    if (input.idemKey !== undefined) set.idemKey = input.idemKey;
+    if (Object.keys(set).length > 0) {
+      await this.db
+        .update(actionIdempotencyRecords)
+        .set(set)
+        .where(eq(actionIdempotencyRecords.id, id));
+    }
+    const rows = await this.db
+      .select()
+      .from(actionIdempotencyRecords)
+      .where(eq(actionIdempotencyRecords.id, id))
+      .limit(1);
+    return rows[0] ? this.toIdempotencyRecord(rows[0]) : null;
+  }
+
+  private toExecutionSession(
+    row: typeof actionExecutionSessions.$inferSelect,
+  ): ExecutionSessionRecord {
+    return {
+      id: row.id,
+      workspaceId: row.workspaceId,
+      actionJobId: row.actionJobId,
+      attemptNumber: row.attemptNumber,
+      status: row.status as ExecutionSessionStatus,
+      adapter: row.adapter as ExecutionAdapterName,
+      browserProfileKey: row.browserProfileKey,
+      startedAt: row.startedAt,
+      preflightVerifiedAt: row.preflightVerifiedAt,
+      submitStartedAt: row.submitStartedAt,
+      submittedAt: row.submittedAt,
+      verificationStartedAt: row.verificationStartedAt,
+      verifiedAt: row.verifiedAt,
+      ambiguousAt: row.ambiguousAt,
+      failedAt: row.failedAt,
+      cancelledAt: row.cancelledAt,
+      finishedAt: row.finishedAt,
+      errorCode: row.errorCode,
+      errorMessage: row.errorMessage,
+      recoveryState: row.recoveryState,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  private toExecutionEvidence(
+    row: typeof actionExecutionEvidence.$inferSelect,
+  ): ExecutionEvidenceRecord {
+    return {
+      id: row.id,
+      workspaceId: row.workspaceId,
+      actionJobId: row.actionJobId,
+      executionSessionId: row.executionSessionId,
+      evidenceType: row.evidenceType as EvidenceType,
+      storageKey: row.storageKey,
+      evidenceHash: row.evidenceHash,
+      facebookCommentId: row.facebookCommentId,
+      observedContent: row.observedContent,
+      observedAuthor: row.observedAuthor,
+      observedPostUrl: row.observedPostUrl,
+      observedAt: row.observedAt,
+      metadata: this.parseJsonObject(row.metadata),
+      createdAt: row.createdAt,
+    };
+  }
+
+  private toIdempotencyRecord(
+    row: typeof actionIdempotencyRecords.$inferSelect,
+  ): IdempotencyRecord {
+    return {
+      id: row.id,
+      workspaceId: row.workspaceId,
+      businessId: row.businessId,
+      targetPostKey: row.targetPostKey,
+      actionType: row.actionType as ActionType,
+      actionJobId: row.actionJobId,
+      executionSessionId: row.executionSessionId,
+      status: row.status as IdempotencyStatus,
+      facebookCommentId: row.facebookCommentId,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
     };
   }
 }

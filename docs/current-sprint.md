@@ -2,33 +2,34 @@
 
 ## Current Sprint
 
-**SPRINT 011 — Action Queue Engine**
+**SPRINT 012 — Facebook Comment Adapter and Safe Execution Foundation**
 
 ## Objectives
 
-**Action Queue Engine (safe boundary; NO execution).**
+**Safe Execution Foundation (NO real Facebook write).**
 
-Turn an **APPROVED Review Task** into an **Action Job** that captures the approved content and target immutably — a **safe boundary** between an approved decision and future platform execution. **This sprint does NOT execute Facebook actions** and runs **NO Action Worker**; every job is created **BLOCKED** under current safety defaults. Concretely:
+Build the foundation for executing a single Facebook comment safely — a narrow adapter, a deterministic fake, an executor, execution sessions, evidence, verification, recovery, and database-level idempotency — **without performing any real Facebook write**. Real execution stays disabled after this sprint. Concretely:
 
-- Database: `action_jobs` + `action_events` (migration `0009`).
-- Five modules: ActionIntentBuilder (pure), ActionPolicyGuard (pure; ALLOW/BLOCK/REJECT), ActionQueue (state machine), ActionRepository (only DB boundary), ActionCoordinator.
-- Only APPROVED reviews create jobs; one active job per (review, action type); intent immutable; execution disabled by default.
-- API, Action Queue + Action Detail web pages, "Create Action Job" on approved Review Detail, `action:*` CLI; 9 audit event types.
-- Documentation ([59](59-action-queue-engine.md)–[63](63-action-queue-runbook.md)) and [ADR-020](adr/ADR-020-action-queue-boundary.md)/[ADR-021](adr/ADR-021-approved-review-to-action-job.md)/[ADR-022](adr/ADR-022-action-execution-disabled-by-default.md).
+- Database: migration `0010` — `action_jobs` execution columns + `action_execution_sessions`, `action_execution_evidence`, `action_idempotency_records`, with nullable-unique keys emulating partial-unique indexes.
+- Execution module: narrow `FacebookCommentAdapter`, deterministic `FakeFacebookCommentAdapter`, disabled `PlaywrightFacebookCommentAdapter` boundary, session/evidence/idempotency repositories, pure verification + recovery, `ActionExecutor`, `ExecutionCoordinator`, session state machine, controlled evidence storage keys.
+- Verified-only success; exact typed-content equality; ambiguity never auto-retries; kill switch checked before execution and submit; Playwright refuses even when fully flagged.
+- API, Action Detail execution section + `/settings/action-executions/[id]`, `action:execution:*` CLI, per-route rate limits.
+- Architecture Review remediation: doctor safety checks, production weak-DB-credential guard, strict URL parsing, doc hygiene.
+- Documentation ([64](64-facebook-comment-adapter.md)–[71](71-safe-execution-runbook.md)) and [ADR-023](adr/ADR-023-facebook-comment-adapter-boundary.md)–[ADR-026](adr/ADR-026-playwright-adapter-disabled-boundary.md).
 
 ## Scope
 
 **In scope**
 
-- Approved Review → immutable Intent → Policy Guard → Action Job (queued or **blocked**) → events.
-- State machine (queued/blocked/processing/succeeded/failed/cancelled) with enforced transitions; cancel / retry (bounded) / recheck-policy.
-- Workspace isolation, idempotency (one active job per review+type), full auditability. No silent failures, no infinite retries.
+- Queued `facebook_comment` job → ExecutionCoordinator (five safety gates) → Session → Executor → Fake Adapter → Verify → Evidence.
+- Execution session state machine; pre/post-submit verification; recovery classification (SAFE_RETRY / NO_RETRY / MANUAL_INVESTIGATION); database-level idempotency (one active job/session, one verified success per identity).
+- The disabled Playwright boundary (structure only, refuses to run); strict canonical Facebook post URL parsing + `targetPostKey`.
 
 **Out of scope**
 
-- Facebook comment/message execution, Playwright write, Facebook write, an Action Adapter/Worker.
-- Telegram sending, auto-approval, auto-comment, billing, subscription, teams.
-- The Action Job has no executor — the pipeline ends at the job.
+- Real Facebook comment/write execution, Playwright submit, a generic Platform Adapter Framework, Facebook Message.
+- TikTok/Instagram/LINE, auto-comment, concurrent browser executions, CAPTCHA/checkpoint bypass, proxy rotation, stealth, browser farm.
+- n8n execution, real Telegram/AI, billing, subscription, teams.
 
 The full exclusion list is in [not-doing.md](not-doing.md).
 
@@ -36,19 +37,20 @@ The full exclusion list is in [not-doing.md](not-doing.md).
 
 **Complete (not committed).**
 
-An APPROVED review creates an Action Job that captures the approved (or edited) content and the Facebook post target immutably — as pure Intent/Policy modules, an ActionQueue state machine, an ActionRepository (the only DB boundary), and an ActionCoordinator. Only APPROVED reviews create jobs; PENDING/REJECTED/EXPIRED never do. At most one active job exists per (review, action type). The Policy Guard blocks a job unless the engine is enabled, Facebook writes are enabled, and the kill switch is off — so under current defaults every job is created **BLOCKED** and `recheck-policy` keeps it blocked. There is **no Action Worker** and **no Facebook/Playwright/Telegram/AI call** anywhere; `processing` is never entered at runtime. Cancel, bounded retry, and recheck are supported; every transition is an auditable event with safe payloads. The full quality suite passes (lint, typecheck, test — 319 passing, build, format:check, doctor) and `db:status` is green; the flow was verified live against MySQL (create → blocked → duplicate 409 → recheck stays blocked → PENDING/REJECTED 409 → cancel → cross-workspace 404). No commit was made this sprint. Detail: [sprints/SPRINT-011-action-queue.md](sprints/SPRINT-011-action-queue.md).
+The Safe Execution Foundation is built and exercised entirely through the deterministic fake adapter. A queued `facebook_comment` job flows through the ExecutionCoordinator — which enforces the five safety gates, single-active-session, and duplicate-success — into an Execution Session driven by the ActionExecutor: preflight (target identity + exact typed-content equality), submit, and post-submit verification. **Verified is the only success**, requiring an observed comment id and exact content match; a screenshot alone is never sufficient. Ambiguous outcomes and platform interrupts (checkpoint / expired / restricted / captcha) never auto-retry and route to human recovery; a crash mid-submit becomes ambiguous. Database-level idempotency (nullable-unique keys) makes a duplicate successful comment impossible even under concurrency. The `PlaywrightFacebookCommentAdapter` refuses to run — with `ADAPTER_DISABLED` under safe defaults and `REAL_WRITE_FORBIDDEN` even when all five flags are set — so **no real Facebook write can occur**. Under the mandated safe defaults (engine off, writes off, kill switch on) `prepare-execution` returns `blocked` and creates no session. The Architecture Review remediations landed: doctor safety assertions, a production guard that rejects weak/default DB credentials, and strict `URL` parsing replacing the regex. The full quality suite passes (lint, typecheck, test — 376 passing, build, format:check, doctor) and `db:status` is green; runtime was verified with `FACEBOOK_COMMENT_ADAPTER=fake`. No commit was made this sprint. Detail: [sprints/SPRINT-012-facebook-comment-adapter.md](sprints/SPRINT-012-facebook-comment-adapter.md).
 
 ## Definition of Done
 
-- [x] Migration `0009` (`action_jobs`, `action_events`); no credential/profile/cookie columns; no screenshot/comment-result table.
-- [x] Five modules (Intent/Policy pure; Queue state machine; Repository sole DB boundary; Coordinator).
-- [x] Only APPROVED reviews create jobs; one active job per (review, type); intent immutable.
-- [x] Execution disabled by default → jobs BLOCKED; recheck stays blocked; state machine enforced; retries bounded.
-- [x] 9 events with safe payloads; API + UI + CLI; ownership enforced (404); no secrets in responses.
-- [x] No Action Worker; no Facebook/Playwright/Telegram/AI call; no `processing` at runtime.
-- [x] Tests (319 passing, 41 new) with mocks; full quality suite + `db:status` green; live runtime verified.
-- [x] Documentation + ADR-020/021/022. **No commit** made.
+- [x] Migration `0010` (execution columns + 3 tables; nullable-unique keys); no credential/profile/cookie columns.
+- [x] Narrow adapter + deterministic fake (13 scenarios) + disabled Playwright boundary; verification + recovery pure.
+- [x] Verified-only success; exact typed-content equality; ambiguity never auto-retries; crash → ambiguous.
+- [x] Database-level idempotency: one active job/session and one verified success per identity; concurrent duplicate rejected.
+- [x] Five safety gates + kill-switch checks before execution and submit; Playwright refuses even fully flagged.
+- [x] API + Execution UI + `action:execution:*` CLI; per-route rate limits; ownership enforced (404); no secrets in responses.
+- [x] Remediation: doctor safety checks, production weak-credential guard, strict URL parsing, doc hygiene.
+- [x] Tests (376 passing, 57 new) with fake/mocks; full quality suite + `db:status` green; runtime verified with the fake adapter.
+- [x] Documentation + ADR-023/024/025/026. **No commit** made.
 
 ## Next
 
-On sign-off, the project proceeds to **SPRINT 012 — Action Execution (Playwright Comment)**: build the executor behind this boundary — publish approved comments to Facebook, verified and evidenced, at concurrency one, gated by the kill switch and idempotency. See [12-mvp-roadmap.md](12-mvp-roadmap.md).
+On sign-off, the project proceeds to **SPRINT 013 — Real Facebook Comment Execution**: implement the real Playwright adapter behind this boundary — publish approved comments to Facebook, verified and evidenced, at concurrency one, gated by the kill switch and database idempotency, with its own execution verification and operator sign-off. See [12-mvp-roadmap.md](12-mvp-roadmap.md).

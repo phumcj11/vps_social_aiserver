@@ -1,4 +1,5 @@
 import type { ActionIntent, ActionPolicyResult, ActionSafetyState, PolicyReason } from './types';
+import { isCanonicalFacebookPostUrl } from './canonical-url';
 
 /**
  * ActionPolicyGuard (SPRINT 011) — PURE and DETERMINISTIC.
@@ -14,8 +15,6 @@ import type { ActionIntent, ActionPolicyResult, ActionSafetyState, PolicyReason 
  * on), the guard returns BLOCK under current defaults — a job is never queued
  * for execution this sprint. The guard performs no I/O and never executes.
  */
-const FACEBOOK_POST_URL_RE = /^https:\/\/(?:www\.|m\.|web\.|mbasic\.)?facebook\.com\/[^\s]+$/i;
-
 export function evaluateActionPolicy(
   intent: ActionIntent,
   safety: ActionSafetyState,
@@ -41,7 +40,7 @@ export function evaluateActionPolicy(
       detail: `Content is ${content.length} chars (max ${safety.maxContentLength})`,
     });
   }
-  if (!FACEBOOK_POST_URL_RE.test(intent.targetUrl)) {
+  if (!isCanonicalFacebookPostUrl(intent.targetUrl)) {
     reject.push({
       code: 'UNSAFE_TARGET_URL',
       detail: 'Target URL is not a supported Facebook post URL',

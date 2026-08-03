@@ -331,6 +331,46 @@ export interface ActionEvent {
   createdAt: string;
 }
 
+export interface ExecutionSession {
+  id: string;
+  actionJobId: string;
+  attemptNumber: number;
+  status: string;
+  adapter: string;
+  recoveryState: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  startedAt: string | null;
+  preflightVerifiedAt: string | null;
+  submittedAt: string | null;
+  verifiedAt: string | null;
+  ambiguousAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ExecutionEvidence {
+  id: string;
+  evidenceType: string;
+  storageKey: string | null;
+  evidenceHash: string | null;
+  facebookCommentId: string | null;
+  observedContent: string | null;
+  observedAuthor: string | null;
+  observedPostUrl: string | null;
+  observedAt: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface ExecutionRecovery {
+  disposition: 'SAFE_RETRY' | 'NO_RETRY' | 'MANUAL_INVESTIGATION';
+  reasonCode: string;
+  reasonDetail: string;
+  requiresHuman: boolean;
+}
+
 export class ApiRequestError extends Error {
   code?: string;
   status: number;
@@ -683,4 +723,34 @@ export const api = {
     request<{ action: ActionJob; policy: ActionPolicy }>(`/actions/${id}/recheck-policy`, {
       method: 'POST',
     }),
+
+  // Safe Execution (SPRINT 012). No "Execute Now"; under safe defaults this is
+  // blocked. No control here enables writes or the kill switch.
+  prepareExecution: (id: string) =>
+    request<{ status: string; blockedReasons: string[] | null; session: ExecutionSession | null }>(
+      `/actions/${id}/prepare-execution`,
+      { method: 'POST' },
+    ),
+  listExecutionSessions: (id: string) =>
+    request<{ sessions: ExecutionSession[] }>(`/actions/${id}/execution-sessions`, {
+      method: 'GET',
+    }),
+  getExecutionSession: (sessionId: string) =>
+    request<{ session: ExecutionSession; evidence: ExecutionEvidence[] }>(
+      `/action-executions/${sessionId}`,
+      { method: 'GET' },
+    ),
+  listExecutionEvidence: (sessionId: string) =>
+    request<{ evidence: ExecutionEvidence[] }>(`/action-executions/${sessionId}/evidence`, {
+      method: 'GET',
+    }),
+  cancelExecutionSession: (sessionId: string) =>
+    request<{ session: ExecutionSession }>(`/action-executions/${sessionId}/cancel`, {
+      method: 'POST',
+    }),
+  recoverExecutionSession: (sessionId: string) =>
+    request<{ session: ExecutionSession; recovery: ExecutionRecovery }>(
+      `/action-executions/${sessionId}/recover`,
+      { method: 'POST' },
+    ),
 };

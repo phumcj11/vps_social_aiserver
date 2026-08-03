@@ -3,10 +3,12 @@ import {
   varchar,
   text,
   int,
+  boolean,
   datetime,
   timestamp,
   uniqueIndex,
   index,
+  foreignKey,
 } from 'drizzle-orm/mysql-core';
 
 /**
@@ -774,17 +776,180 @@ export const actionJobs = mysqlTable(
     blockedAt: datetime('blocked_at'),
     lastErrorCode: varchar('last_error_code', { length: 40 }),
     lastErrorMessage: varchar('last_error_message', { length: 500 }),
+    // ── SPRINT 012 execution safeguards ──────────────────────────────────────
+    // Deterministic canonical post identity (hash), not the raw URL string.
+    targetPostKey: varchar('target_post_key', { length: 128 }),
+    // Nullable-unique key = "<review>:<type>" while ACTIVE (queued|blocked|
+    // processing), NULL once terminal — DB-enforces one active job per pair.
+    activeDedupKey: varchar('active_dedup_key', { length: 120 }),
+    // Nullable-unique key set only on VERIFIED success — DB-enforces one
+    // successful comment per (workspace, business, post, type).
+    successIdempotencyKey: varchar('success_idempotency_key', { length: 200 }),
+    // Execution phase, distinct from the queue status.
+    // none | preparing | ready | executing | verified | ambiguous | failed
+    executionState: varchar('execution_state', { length: 30 }).notNull().default('none'),
+    ambiguousAt: datetime('ambiguous_at'),
+    verificationRequired: boolean('verification_required').notNull().default(false),
+    lastExecutionSessionId: varchar('last_execution_session_id', { length: 36 }),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow().onUpdateNow(),
   },
   (table) => ({
-    // At most one ACTIVE job per (review_task, action_type) is enforced in the
-    // repository (active = queued|blocked|processing); this index supports it.
+    // DB-level: at most one ACTIVE job per (review_task, action_type).
+    activeDedupUnique: uniqueIndex('action_jobs_active_dedup_unique').on(table.activeDedupKey),
+    // DB-level: at most one VERIFIED successful comment per identity tuple.
+    successUnique: uniqueIndex('action_jobs_success_unique').on(table.successIdempotencyKey),
     reviewTypeIdx: index('action_jobs_review_type_idx').on(table.reviewTaskId, table.actionType),
     workspaceIdx: index('action_jobs_workspace_idx').on(table.workspaceId),
     statusIdx: index('action_jobs_status_idx').on(table.workspaceId, table.status),
   }),
 );
+
+/**
+ * ── SPRINT 012: Facebook Comment Adapter & Safe Execution Foundation ─────────
+ *
+ * An Execution Session is one attempt to execute an Action Job through the
+ * Facebook Comment Adapter. It is append-only in identity; state transitions are
+ * validated. An ambiguous session BLOCKS blind retries. No real Facebook write
+ * happens this sprint — the fake adapter drives all sessions.
+ */
+export const actionExecutionSessions = mysqlTable(
+  'action_execution_sessions',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    workspaceId: varchar('workspace_id', { length: 36 })
+      .notNull()
+      .references(() => workspaces.id),
+    actionJobId: varchar('action_job_id', { length: 36 })
+      .notNull()
+      .references(() => actionJobs.id),
+    attemptNumber: int('attempt_number').notNull(),
+    // created|preflight|ready_to_submit|submitting|submitted|verifying|verified|
+    // ambiguous|failed|cancelled|checkpoint_required|session_expired|account_restricted
+    status: varchar('status', { length: 30 }).notNull().default('created'),
+    // fake | playwright
+    adapter: varchar('adapter', { length: 20 }).notNull(),
+    // Controlled profile reference (key, never an absolute path).
+    browserProfileKey: varchar('browser_profile_key', { length: 128 }),
+    startedAt: datetime('started_at'),
+    preflightVerifiedAt: datetime('preflight_verified_at'),
+    submitStartedAt: datetime('submit_started_at'),
+    submittedAt: datetime('submitted_at'),
+    verificationStartedAt: datetime('verification_started_at'),
+    verifiedAt: datetime('verified_at'),
+    ambiguousAt: datetime('ambiguous_at'),
+    failedAt: datetime('failed_at'),
+    cancelledAt: datetime('cancelled_at'),
+    finishedAt: datetime('finished_at'),
+    errorCode: varchar('error_code', { length: 40 }),
+    errorMessage: varchar('error_message', { length: 500 }),
+    // SAFE_RETRY | NO_RETRY | MANUAL_INVESTIGATION (recovery classification).
+    recoveryState: varchar('recovery_state', { length: 40 }),
+    // Nullable-unique = action_job_id while the session is ACTIVE, NULL once
+    // terminal — DB-enforces one active session per Action Job.
+    activeKey: varchar('active_key', { length: 36 }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => ({
+    activeUnique: uniqueIndex('action_exec_sessions_active_unique').on(table.activeKey),
+    jobUnique: uniqueIndex('action_exec_sessions_job_attempt_unique').on(
+      table.actionJobId,
+      table.attemptNumber,
+    ),
+    workspaceIdx: index('action_exec_sessions_workspace_idx').on(table.workspaceId),
+    jobIdx: index('action_exec_sessions_job_idx').on(table.actionJobId),
+  }),
+);
+
+/** Append-only, controlled evidence for an Execution Session. No secrets/cookies. */
+export const actionExecutionEvidence = mysqlTable(
+  'action_execution_evidence',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    workspaceId: varchar('workspace_id', { length: 36 })
+      .notNull()
+      .references(() => workspaces.id),
+    actionJobId: varchar('action_job_id', { length: 36 })
+      .notNull()
+      .references(() => actionJobs.id),
+    // FK added with an explicit short name in the table callback below — the
+    // auto-generated name would exceed MySQL's 64-char identifier limit.
+    executionSessionId: varchar('execution_session_id', { length: 36 }).notNull(),
+    // pre_submit_snapshot|typed_content_snapshot|submit_snapshot|
+    // post_submit_screenshot|comment_identity|verification_snapshot|failure_snapshot
+    evidenceType: varchar('evidence_type', { length: 40 }).notNull(),
+    // Controlled storage key (relative), never an absolute path.
+    storageKey: varchar('storage_key', { length: 300 }),
+    // SHA-256 of the file where file evidence exists.
+    evidenceHash: varchar('evidence_hash', { length: 64 }),
+    facebookCommentId: varchar('facebook_comment_id', { length: 100 }),
+    observedContent: text('observed_content'),
+    observedAuthor: varchar('observed_author', { length: 255 }),
+    observedPostUrl: varchar('observed_post_url', { length: 700 }),
+    observedAt: datetime('observed_at'),
+    // JSON — safe structured metadata only (no cookies/tokens/paths/DOM/secrets).
+    metadata: text('metadata'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    sessionFk: foreignKey({
+      name: 'action_exec_evidence_session_fk',
+      columns: [table.executionSessionId],
+      foreignColumns: [actionExecutionSessions.id],
+    }),
+    sessionIdx: index('action_exec_evidence_session_idx').on(table.executionSessionId),
+    jobIdx: index('action_exec_evidence_job_idx').on(table.actionJobId),
+  }),
+);
+
+/**
+ * The authoritative duplicate-comment guard: one reservation per
+ * (workspace, business, target_post_key, action_type). A VERIFIED record
+ * permanently blocks duplicates; an AMBIGUOUS record blocks automatic retry;
+ * RELEASE frees the slot ONLY with explicit proof no comment was submitted
+ * (the `idemKey` becomes NULL so a new reservation may be taken).
+ */
+export const actionIdempotencyRecords = mysqlTable(
+  'action_idempotency_records',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    workspaceId: varchar('workspace_id', { length: 36 })
+      .notNull()
+      .references(() => workspaces.id),
+    businessId: varchar('business_id', { length: 36 })
+      .notNull()
+      .references(() => businesses.id),
+    targetPostKey: varchar('target_post_key', { length: 128 }).notNull(),
+    actionType: varchar('action_type', { length: 40 }).notNull(),
+    actionJobId: varchar('action_job_id', { length: 36 })
+      .notNull()
+      .references(() => actionJobs.id),
+    executionSessionId: varchar('execution_session_id', { length: 36 }),
+    // reserved | submitted | verified | ambiguous | released
+    status: varchar('status', { length: 20 }).notNull().default('reserved'),
+    facebookCommentId: varchar('facebook_comment_id', { length: 100 }),
+    // Nullable-unique = "<ws>:<biz>:<postKey>:<type>" while NOT released,
+    // NULL when released — DB-enforces one live reservation per identity tuple.
+    idemKey: varchar('idem_key', { length: 260 }),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => ({
+    idemUnique: uniqueIndex('action_idempotency_idem_unique').on(table.idemKey),
+    lookupIdx: index('action_idempotency_lookup_idx').on(
+      table.workspaceId,
+      table.businessId,
+      table.targetPostKey,
+      table.actionType,
+    ),
+    jobIdx: index('action_idempotency_job_idx').on(table.actionJobId),
+  }),
+);
+
+export type ActionExecutionSessionRow = typeof actionExecutionSessions.$inferSelect;
+export type ActionExecutionEvidenceRow = typeof actionExecutionEvidence.$inferSelect;
+export type ActionIdempotencyRecordRow = typeof actionIdempotencyRecords.$inferSelect;
 
 /** Append-only lifecycle events for an Action Job (safe payloads only). */
 export const actionEvents = mysqlTable(

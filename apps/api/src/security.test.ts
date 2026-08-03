@@ -53,7 +53,12 @@ describe('security', () => {
 
   it('the auth cookie is Secure in production', async () => {
     const store = new InMemoryStore();
-    const env = loadApiEnv({ APP_ENV: 'production', WEB_ORIGIN: 'https://app.example.com' });
+    const env = loadApiEnv({
+      APP_ENV: 'production',
+      WEB_ORIGIN: 'https://app.example.com',
+      // Production refuses weak/default DB credentials (SPRINT 012 guard).
+      DATABASE_URL: 'mysql://kmkt_app:S3cure-Pass-9x7q@127.0.0.1:3306/kmkt',
+    });
     const app = await buildServer({ store, env, logger: createLogger('error') });
     const reg = await app.inject({
       method: 'POST',

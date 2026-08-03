@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { api, ApiRequestError, type ActionJob, type ActionEvent } from '../../../../lib/api';
+import {
+  api,
+  ApiRequestError,
+  type ActionJob,
+  type ActionEvent,
+  type ExecutionSession,
+} from '../../../../lib/api';
 import { Nav } from '../../../../components/Nav';
 
 const NOTICE = 'This action has not been executed on Facebook.';
@@ -36,6 +42,8 @@ export default function ActionDetailPage() {
   const [match, setMatch] = useState<MatchRef | null>(null);
   const [policyReasons, setPolicyReasons] = useState<{ code: string; detail: string }[]>([]);
   const [events, setEvents] = useState<ActionEvent[]>([]);
+  const [sessions, setSessions] = useState<ExecutionSession[]>([]);
+  const [execNotice, setExecNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +55,29 @@ export default function ActionDetailPage() {
     setMatch(res.match);
     setPolicyReasons(res.policyReasons);
     setEvents(res.events);
+    const ex = await api.listExecutionSessions(id);
+    setSessions(ex.sessions);
+  }
+
+  async function prepareExecution() {
+    setError(null);
+    setExecNotice(null);
+    setBusy(true);
+    try {
+      const res = await api.prepareExecution(id);
+      if (res.status === 'blocked') {
+        setExecNotice(
+          `Execution is blocked by safety settings: ${(res.blockedReasons ?? []).join('; ')}`,
+        );
+      } else {
+        setExecNotice(`Execution result: ${res.status}`);
+      }
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiRequestError ? err.message : 'Prepare execution failed.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -203,6 +234,40 @@ export default function ActionDetailPage() {
             )}
           </li>
         </ul>
+      </section>
+
+      <section style={{ marginBottom: '1.25rem' }}>
+        <h2>Execution</h2>
+        <p style={{ fontSize: '0.9rem', color: '#555' }}>
+          There is no “Execute Now” here. Preparing an execution runs only through safe checks and,
+          under current settings, is blocked — no real Facebook comment is ever posted from this
+          screen.
+        </p>
+        <button type="button" disabled={busy} onClick={prepareExecution}>
+          Prepare Execution
+        </button>
+        {execNotice && (
+          <p
+            style={{ color: '#5c4500', background: '#fff8e1', padding: '0.5rem', borderRadius: 4 }}
+          >
+            {execNotice}
+          </p>
+        )}
+        {sessions.length === 0 ? (
+          <p>No execution sessions.</p>
+        ) : (
+          <ul>
+            {sessions.map((s) => (
+              <li key={s.id}>
+                <a href={`/settings/action-executions/${s.id}`}>
+                  Attempt {s.attemptNumber} — {s.status}
+                </a>{' '}
+                <span style={{ color: '#777' }}>({s.adapter})</span>
+                {s.recoveryState && <> · recovery: {s.recoveryState}</>}
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section>

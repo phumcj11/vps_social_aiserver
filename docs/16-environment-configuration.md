@@ -38,7 +38,7 @@ For each variable: its **purpose**, **safe default**, whether it is a **secret**
 
 | Variable | Purpose | Safe default | Secret? | Relevant from | Security notes |
 | -------- | ------- | ------------ | ------- | ------------- | -------------- |
-| `DATABASE_URL` | Connection string for MySQL. | `mysql://kmkt_social_ai:change_me@127.0.0.1:3306/kmkt_social_ai` | **Yes (in real use)** | SPRINT 002 | Placeholder, not a real credential. Use host `mysql` inside Compose; use `127.0.0.1` for host-run API/migrations (MySQL is published on loopback only, never public). Replace `change_me` locally; never commit the real value. |
+| `DATABASE_URL` | Connection string for MySQL. | `mysql://kmkt_social_ai:change_me@127.0.0.1:3306/kmkt_social_ai` | **Yes (in real use)** | SPRINT 002 | Placeholder, not a real credential. Use host `mysql` inside Compose; use `127.0.0.1` for host-run API/migrations (MySQL is published on loopback only, never public). Replace `change_me` locally; never commit the real value. **In production (`APP_ENV=production`) startup REJECTS a weak/default credential** (e.g. `change_me`, `password`, `root`) — SPRINT 012 guard. |
 | `MYSQL_DATABASE` | Database name for the MySQL container. | `kmkt_social_ai` | No | SPRINT 002+ | — |
 | `MYSQL_USER` | Application DB user created by the container. | `kmkt_social_ai` | No | SPRINT 002+ | — |
 | `MYSQL_PASSWORD` | Password for `MYSQL_USER`. | `change_me` | **Yes (in real use)** | SPRINT 002+ | Placeholder only. Set a strong value in local `.env`; never commit. |
@@ -83,7 +83,26 @@ The Action Queue is a **safe boundary** — it does NOT execute Facebook actions
 | `ACTION_ENGINE_ENABLED` | Enables action execution. | `false` | No | Read by the Action Policy Guard — while false, jobs are blocked. No executor exists this sprint. |
 | `ACTION_DEFAULT_MAX_ATTEMPTS` | Retry cap per job (no infinite retries). | `3` | No | Enforced by the queue's retry guard. |
 | `ACTION_ALLOWED_TYPES` | Comma-separated allowed action types. | `facebook_comment` | No | Only `facebook_comment` in the MVP; others are rejected. |
-| `ACTION_EXECUTION_CONCURRENCY` | Reserved worker concurrency (unused this sprint). | `1` | No | No worker runs this sprint. |
+| `ACTION_EXECUTION_CONCURRENCY` | Execution concurrency (one attempt at a time). | `1` | No | Must stay `1`; verified by doctor. |
+
+### Safe Execution Foundation (SPRINT 012)
+
+The execution foundation is exercised only through the deterministic **fake** adapter — no real Facebook write ships this sprint. Under these defaults every `prepare-execution` is **blocked** and no session is created.
+
+| Variable | Purpose | Safe default | Secret? | Security notes |
+| -------- | ------- | ------------ | ------- | -------------- |
+| `FACEBOOK_COMMENT_ADAPTER` | Selects the comment adapter. | `fake` | No | `fake` is the only functional path; `playwright` is a disabled boundary that refuses. Doctor asserts `fake`. |
+| `FACEBOOK_WRITE_ACTION_ENABLED` | Enables Facebook write actions. | `false` | No | One of the five execution gates; safe default off. |
+| `FACEBOOK_COMMENT_ENABLED` | Enables the comment action specifically. | `false` | No | One of the five execution gates; safe default off. |
+| `FACEBOOK_COMMENT_EXECUTION_TIMEOUT_MS` | Max time for one execution attempt. | `90000` | No | — |
+| `FACEBOOK_COMMENT_VERIFY_TIMEOUT_MS` | Max time for post-submit verification. | `30000` | No | — |
+| `FACEBOOK_COMMENT_MAX_ATTEMPTS` | Attempts per job (no blind retries). | `1` | No | Ambiguity never auto-retries. |
+| `ACTION_EVIDENCE_RETENTION_DAYS` | Evidence retention window. | `30` | No | Evidence stores opaque storage keys, never secrets. |
+| `ACTION_AMBIGUOUS_AUTO_RETRY` | Auto-retry ambiguous outcomes. | `false` | No | Must stay `false`; doctor asserts it. Ambiguity requires human recovery. |
+| `PLAYWRIGHT_CONCURRENCY` | Chromium instances at once. | `1` | No | Collector and Comment Executor never share a profile concurrently. |
+| `ACTION_CREATE_RATE_LIMIT_MAX` / `_WINDOW_SECONDS` | Rate limit on action creation. | `30` / `60` | No | Per client, per window. |
+| `EXECUTION_PREPARE_RATE_LIMIT_MAX` / `_WINDOW_SECONDS` | Rate limit on prepare-execution. | `10` / `60` | No | — |
+| `EXECUTION_RECOVER_RATE_LIMIT_MAX` / `_WINDOW_SECONDS` | Rate limit on recover. | `10` / `60` | No | — |
 
 ### Concurrency (conservative for the VPS)
 
@@ -162,6 +181,7 @@ These will be added in the sprint indicated and will always be secrets — never
 
 1. `.env` is always gitignored; only `.env.example` (safe, no secrets) is tracked.
 2. Placeholders (`change_me`, `change_me_root`) must be replaced locally and never committed as real values.
-3. Safety flags (`GLOBAL_KILL_SWITCH`, `COMMENT_APPROVAL_REQUIRED`, all `FACEBOOK_*`, concurrency = 1) are verified by `pnpm run doctor`; weakening them fails the check.
+3. Safety flags (`GLOBAL_KILL_SWITCH`, `COMMENT_APPROVAL_REQUIRED`, all `FACEBOOK_*`, `ACTION_ENGINE_ENABLED=false`, `FACEBOOK_COMMENT_ADAPTER=fake`, `ACTION_AMBIGUOUS_AUTO_RETRY=false`, concurrency = 1) are verified by `pnpm run doctor`; weakening them fails the check.
 4. Secrets never appear in logs, screenshots, the frontend, n8n workflows, or Docker images.
 5. Facebook credentials/cookies/profiles are never environment variables in Git — they are secure server-side storage only.
+6. In production, startup **rejects** a weak/default `DATABASE_URL` credential (SPRINT 012); doctor warns when `.env` still carries a placeholder.

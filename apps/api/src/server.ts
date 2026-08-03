@@ -39,6 +39,14 @@ import { registerActionRoutes } from './action/routes';
 import { ActionRepository } from './action/repository';
 import { ActionQueue } from './action/queue';
 import { ActionCoordinator } from './action/coordinator';
+import { registerExecutionRoutes } from './execution/routes';
+import { ExecutionSessionRepository } from './execution/session-repository';
+import { ExecutionEvidenceRepository } from './execution/evidence-repository';
+import { ActionIdempotencyRepository } from './execution/idempotency-repository';
+import { ActionExecutor } from './execution/executor';
+import { ExecutionVerificationService } from './execution/verification';
+import { ExecutionRecoveryPolicy } from './execution/recovery';
+import { ExecutionCoordinator } from './execution/coordinator';
 
 export interface ServerDeps {
   store: Store;
@@ -178,9 +186,31 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     logger,
   });
   const actionRepo = new ActionRepository(store);
+  const actionQueue = new ActionQueue(actionRepo);
   const actions = new ActionCoordinator({
     repo: actionRepo,
-    queue: new ActionQueue(actionRepo),
+    queue: actionQueue,
+    env,
+    logger,
+  });
+  // Safe Execution Foundation (SPRINT 012). Fake adapter by default; the
+  // Playwright boundary refuses. No real Facebook write ships this sprint.
+  const executionSessions = new ExecutionSessionRepository(store);
+  const executionEvidence = new ExecutionEvidenceRepository(store);
+  const executions = new ExecutionCoordinator({
+    sessions: executionSessions,
+    evidence: executionEvidence,
+    idempotency: new ActionIdempotencyRepository(store),
+    executor: new ActionExecutor({
+      sessions: executionSessions,
+      evidence: executionEvidence,
+      verification: new ExecutionVerificationService(),
+      env,
+      logger,
+    }),
+    recovery: new ExecutionRecoveryPolicy(),
+    actionRepo,
+    actionQueue,
     env,
     logger,
   });
@@ -197,6 +227,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   registerAiDraftRoutes(app, { store, env, aiDrafts });
   registerReviewRoutes(app, { store, env, reviews });
   registerActionRoutes(app, { store, env, actions });
+  registerExecutionRoutes(app, { store, env, executions });
 
   return app;
 }
