@@ -2,6 +2,8 @@
 
 How to exercise the Safe Execution Foundation **without any real Facebook write**. Under the mandated safe defaults every prepare/dry-run is **blocked**; the full pipeline is proven by tests and by the fake adapter.
 
+> **The first REAL write** is a separate, manual, operator-supervised procedure — see [81-controlled-facebook-write-test.md](81-controlled-facebook-write-test.md) and [ADR-030](adr/ADR-030-controlled-write-test-procedure.md). Incident lockdown ([80-incident-lockdown.md](80-incident-lockdown.md)) can force all execution off instantly.
+
 ## Safety posture
 
 Real execution requires ALL of these, and this sprint keeps them in their safe state:

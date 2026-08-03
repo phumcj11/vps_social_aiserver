@@ -79,6 +79,8 @@ import type {
   IdempotencyRecord,
   CreateIdempotencyRecordInput,
   UpdateIdempotencyRecordInput,
+  OperationalCountsInput,
+  OperationalCounts,
 } from './types';
 import { ACTIVE_ACTION_STATUSES, ACTIVE_EXECUTION_STATUSES } from './types';
 
@@ -1595,5 +1597,44 @@ export class InMemoryStore implements Store {
     }
     r.updatedAt = this.now();
     return { ...r };
+  }
+
+  async getOperationalCounts(input: OperationalCountsInput): Promise<OperationalCounts> {
+    const aj = {
+      total: 0,
+      queued: 0,
+      blocked: 0,
+      processing: 0,
+      succeeded: 0,
+      failed: 0,
+      cancelled: 0,
+    };
+    let stuckActionJobs = 0;
+    const actionCutoff = input.now.getTime() - input.actionProcessingStaleMs;
+    for (const j of this.actionJobs.values()) {
+      aj.total += 1;
+      aj[j.status] += 1;
+      if (
+        j.status === 'processing' &&
+        (j.startedAt?.getTime() ?? input.now.getTime()) < actionCutoff
+      ) {
+        stuckActionJobs += 1;
+      }
+    }
+    const es = { total: 0, active: 0, ambiguous: 0, failed: 0, verified: 0 };
+    for (const s of this.executionSessions.values()) {
+      es.total += 1;
+      if (ACTIVE_EXECUTION_STATUSES.includes(s.status)) es.active += 1;
+      if (s.status === 'ambiguous') es.ambiguous += 1;
+      if (s.status === 'failed') es.failed += 1;
+      if (s.status === 'verified') es.verified += 1;
+    }
+    let stuckCollectorRuns = 0;
+    const collectorCutoff = input.now.getTime() - input.collectorRunningStaleMs;
+    for (const run of this.collectorRuns.values()) {
+      if (run.status === 'running' && run.startedAt.getTime() < collectorCutoff)
+        stuckCollectorRuns += 1;
+    }
+    return { actionJobs: aj, executionSessions: es, stuckActionJobs, stuckCollectorRuns };
   }
 }

@@ -753,4 +753,71 @@ export const api = {
       `/action-executions/${sessionId}/recover`,
       { method: 'POST' },
     ),
+
+  // Operations (SPRINT 013) — operator-only. Returns safe status only.
+  getOperationsStatus: () => request<OperationsStatus>('/operations/status', { method: 'GET' }),
+  getOperationsMonitoring: () =>
+    request<{ overall: string; checks: { name: string; level: string; value?: number }[] }>(
+      '/operations/monitoring',
+      { method: 'GET' },
+    ),
+  enableMaintenance: (reason: string) =>
+    request<{ maintenance: OperationsModeState }>('/operations/maintenance/enable', {
+      method: 'POST',
+      body: JSON.stringify({ reason, confirm: true }),
+    }),
+  disableMaintenance: (reason: string) =>
+    request<{ maintenance: OperationsModeState }>('/operations/maintenance/disable', {
+      method: 'POST',
+      body: JSON.stringify({ reason, confirm: true }),
+    }),
+  enableLockdown: (reason: string) =>
+    request<{ lockdown: OperationsModeState }>('/operations/lockdown/enable', {
+      method: 'POST',
+      body: JSON.stringify({ reason, confirm: true }),
+    }),
+  disableLockdown: (reason: string) =>
+    request<{ lockdown: OperationsModeState }>('/operations/lockdown/disable', {
+      method: 'POST',
+      body: JSON.stringify({ reason, confirm: true }),
+    }),
 };
+
+export interface OperationsModeState {
+  enabled: boolean;
+  since: string | null;
+  reason: string | null;
+  operator: string | null;
+}
+
+export interface OperationsStatus {
+  mode: string;
+  readinessLevel: string;
+  maintenance: OperationsModeState;
+  lockdown: OperationsModeState;
+  safety: {
+    actionEngineEnabled: boolean;
+    facebookWriteEnabled: boolean;
+    facebookCommentEnabled: boolean;
+    killSwitchOn: boolean;
+    adapter: string;
+    maintenance: boolean;
+    lockdown: boolean;
+  };
+  system: {
+    diskUsedPercent: number;
+    diskFreeGb: number;
+    ramAvailableMb: number;
+    swapUsedPercent: number;
+    loadAvg1: number;
+  };
+  queues: {
+    actionJobs: Record<string, number>;
+    executionSessions: Record<string, number>;
+    stuckActionJobs: number;
+    stuckCollectorRuns: number;
+    ambiguousExecutions: number;
+  };
+  backups: { count: number; latest: { kind: string; createdAt: string; ageHours: number } | null };
+  lastIncident: { at: string; action: string; operator: string; reason: string } | null;
+}

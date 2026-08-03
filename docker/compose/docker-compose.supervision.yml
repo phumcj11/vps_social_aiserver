@@ -1,0 +1,52 @@
+# Process supervision override (SPRINT 013).
+#
+# Opt-in restart/health policy for the LONG-LIVED services only. Apply with:
+#   docker compose -f docker/compose/docker-compose.yml \
+#                  -f docker/compose/docker-compose.supervision.yml up -d mysql api web
+#
+# Deliberately covers ONLY mysql / api / web. The Collector and the Comment
+# Executor (facebook-scanner / facebook-comment) are NEVER given a restart
+# policy: they must be started explicitly by an operator, run to completion at
+# concurrency one, and must never auto-restart or auto-resume — an ambiguous
+# execution result must be resolved by a human, not by a restart loop
+# (see docs/78-process-supervision.md, ADR-029).
+#
+# This override starts NO services on its own; it only changes policy for the
+# services you explicitly bring up.
+
+services:
+  mysql:
+    # Bounded restart: recover from a crash, but do not storm.
+    restart: on-failure:5
+
+  api:
+    restart: on-failure:5
+    # Readiness is gated on /ready (DB up, not in maintenance/lockdown).
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  web:
+    restart: on-failure:5
+    depends_on:
+      api:
+        condition: service_started
+
+  # Explicitly documented as NON-supervised. Left here as a guard-rail comment:
+  # do NOT add `restart:` to these services.
+  facebook-scanner:
+    restart: 'no'
+  facebook-comment:
+    restart: 'no'

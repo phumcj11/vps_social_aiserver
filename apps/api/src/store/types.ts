@@ -1099,4 +1099,37 @@ export interface Store {
     id: string,
     input: UpdateIdempotencyRecordInput,
   ): Promise<IdempotencyRecord | null>;
+
+  // Operational counts (SPRINT 013) — aggregate, workspace-agnostic health data.
+  // Returns COUNTS ONLY (never content, urls, or secrets).
+  getOperationalCounts(input: OperationalCountsInput): Promise<OperationalCounts>;
+}
+
+/** Inputs for operational counts: `now` + staleness cutoffs (ms). */
+export interface OperationalCountsInput {
+  now: Date;
+  actionProcessingStaleMs: number;
+  collectorRunningStaleMs: number;
+}
+
+/** Aggregate operational counts for health/monitoring. Counts only, no content. */
+export interface OperationalCounts {
+  actionJobs: {
+    total: number;
+    queued: number;
+    blocked: number;
+    processing: number;
+    succeeded: number;
+    failed: number;
+    cancelled: number;
+  };
+  executionSessions: {
+    total: number;
+    active: number;
+    ambiguous: number;
+    failed: number;
+    verified: number;
+  };
+  stuckActionJobs: number;
+  stuckCollectorRuns: number;
 }

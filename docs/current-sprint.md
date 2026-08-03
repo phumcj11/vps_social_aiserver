@@ -2,55 +2,46 @@
 
 ## Current Sprint
 
-**SPRINT 012 — Facebook Comment Adapter and Safe Execution Foundation**
+**SPRINT 013 — Operational Hardening and Controlled Write Test Preparation**
 
 ## Objectives
 
-**Safe Execution Foundation (NO real Facebook write).**
+**Operational hardening (NO new product features; NO real execution).**
 
-Build the foundation for executing a single Facebook comment safely — a narrow adapter, a deterministic fake, an executor, execution sessions, evidence, verification, recovery, and database-level idempotency — **without performing any real Facebook write**. Real execution stays disabled after this sprint. Concretely:
+Make the system operable and safe for a first controlled Facebook comment test and a first pilot customer — backups, restore, health, monitoring, maintenance mode, incident lockdown, an operator surface, process-supervision templates, and the controlled-write-test and pilot-readiness runbooks — **without performing any real Facebook write**. All execution flags stay in their safe state. Concretely:
 
-- Database: migration `0010` — `action_jobs` execution columns + `action_execution_sessions`, `action_execution_evidence`, `action_idempotency_records`, with nullable-unique keys emulating partial-unique indexes.
-- Execution module: narrow `FacebookCommentAdapter`, deterministic `FakeFacebookCommentAdapter`, disabled `PlaywrightFacebookCommentAdapter` boundary, session/evidence/idempotency repositories, pure verification + recovery, `ActionExecutor`, `ExecutionCoordinator`, session state machine, controlled evidence storage keys.
-- Verified-only success; exact typed-content equality; ambiguity never auto-retries; kill switch checked before execution and submit; Playwright refuses even when fully flagged.
-- API, Action Detail execution section + `/settings/action-executions/[id]`, `action:execution:*` CLI, per-route rate limits.
-- Architecture Review remediation: doctor safety checks, production weak-DB-credential guard, strict URL parsing, doc hygiene.
-- Documentation ([64](64-facebook-comment-adapter.md)–[71](71-safe-execution-runbook.md)) and [ADR-023](adr/ADR-023-facebook-comment-adapter-boundary.md)–[ADR-026](adr/ADR-026-playwright-adapter-disabled-boundary.md).
+- Backups (`scripts/backup/`) and restore (`scripts/restore/`): compressed, checksummed, manifested, fail-closed, path-safe, credential-safe; retention 7/4/3.
+- Browser-profile recovery by reconnect (never backup); safe `facebook:profile:status|verify` diagnostics.
+- Structured, secret-free logging + rotation (`logs:*`); health endpoints (`/health/*`, `/ready`); lightweight monitoring (`monitor:*`, OK/WARNING/CRITICAL).
+- Process-supervision templates (compose override + systemd, disabled by default); Collector/Executor never auto-restart or auto-resume.
+- Maintenance mode + incident lockdown as **persistent runtime state** (survive restart, DB-independent, audited); effective-safety override forces writes off + kill switch on under lockdown.
+- Operator-only Operations API + `/settings/operations` console; controlled-write-test, pilot-readiness, incident-response, and audit-investigation runbooks.
+- Documentation ([72](72-operational-architecture.md)–[84](84-audit-investigation.md)) and [ADR-027](adr/ADR-027-single-vps-operational-model.md)–[ADR-030](adr/ADR-030-controlled-write-test-procedure.md).
 
 ## Scope
 
-**In scope**
+**In scope** — operability and safety: backup/restore, browser-profile policy, logging/rotation, health/monitoring, supervision, maintenance/lockdown, operations API/UI, runbooks, tests, docs, env.
 
-- Queued `facebook_comment` job → ExecutionCoordinator (five safety gates) → Session → Executor → Fake Adapter → Verify → Evidence.
-- Execution session state machine; pre/post-submit verification; recovery classification (SAFE_RETRY / NO_RETRY / MANUAL_INVESTIGATION); database-level idempotency (one active job/session, one verified success per identity).
-- The disabled Playwright boundary (structure only, refuses to run); strict canonical Facebook post URL parsing + `targetPostKey`.
-
-**Out of scope**
-
-- Real Facebook comment/write execution, Playwright submit, a generic Platform Adapter Framework, Facebook Message.
-- TikTok/Instagram/LINE, auto-comment, concurrent browser executions, CAPTCHA/checkpoint bypass, proxy rotation, stealth, browser farm.
-- n8n execution, real Telegram/AI, billing, subscription, teams.
-
-The full exclusion list is in [not-doing.md](not-doing.md).
+**Out of scope** — real Facebook comment/message execution, auto-comment, generic platform framework, browser farm, horizontal scaling, Kubernetes/Kafka/Redis cluster, proxy rotation, stealth, CAPTCHA/checkpoint bypass, billing, subscriptions, teams, multi-server, external AI, real Telegram. No Execute-Now control. The full exclusion list is in [not-doing.md](not-doing.md).
 
 ## Status
 
 **Complete (not committed).**
 
-The Safe Execution Foundation is built and exercised entirely through the deterministic fake adapter. A queued `facebook_comment` job flows through the ExecutionCoordinator — which enforces the five safety gates, single-active-session, and duplicate-success — into an Execution Session driven by the ActionExecutor: preflight (target identity + exact typed-content equality), submit, and post-submit verification. **Verified is the only success**, requiring an observed comment id and exact content match; a screenshot alone is never sufficient. Ambiguous outcomes and platform interrupts (checkpoint / expired / restricted / captcha) never auto-retry and route to human recovery; a crash mid-submit becomes ambiguous. Database-level idempotency (nullable-unique keys) makes a duplicate successful comment impossible even under concurrency. The `PlaywrightFacebookCommentAdapter` refuses to run — with `ADAPTER_DISABLED` under safe defaults and `REAL_WRITE_FORBIDDEN` even when all five flags are set — so **no real Facebook write can occur**. Under the mandated safe defaults (engine off, writes off, kill switch on) `prepare-execution` returns `blocked` and creates no session. The Architecture Review remediations landed: doctor safety assertions, a production guard that rejects weak/default DB credentials, and strict `URL` parsing replacing the regex. The full quality suite passes (lint, typecheck, test — 376 passing, build, format:check, doctor) and `db:status` is green; runtime was verified with `FACEBOOK_COMMENT_ADAPTER=fake`. No commit was made this sprint. Detail: [sprints/SPRINT-012-facebook-comment-adapter.md](sprints/SPRINT-012-facebook-comment-adapter.md).
+Backups produce compressed, checksummed, manifested archives outside the repo (mysqldump `--single-transaction`; the DB password never touches argv or logs); restore verifies checksum + manifest + schema version + path safety + credentials, requires maintenance + explicit confirmation in production, and never mutates on dry-run. Browser profiles never enter backups, logs, or git; recovery is operator reconnect (`reconnect_required`); safe diagnostics report status only. Structured JSON logging stays secret-free with `logs:verify`; rotation is planned locally. Layered health endpoints are public-safe and report execution as intentionally disabled; lightweight monitoring returns OK/WARNING/CRITICAL with meaningful exit codes. Maintenance mode and incident lockdown are persisted in a runtime state file that survives restart and works when the DB is down; every transition is audited; lockdown’s effective-safety override forces all write flags off and the kill switch on regardless of configuration. An operator-only Operations API (auth + operator allowlist + CSRF + rate limits, safe responses) and a `/settings/operations` console expose mode, safety flags, resources, queue health, backups, and the last incident. Process-supervision templates cover only mysql/api/web; the Collector and Executor never auto-restart or auto-resume. The controlled-write-test runbook keeps the first real write a manual, reversible, single-shot procedure with no Execute-Now surface. Safety defaults are unchanged (engine off, writes off, kill switch on, fake adapter). The full quality suite passes (lint, typecheck, test, build, format:check, doctor) and `db:status` is green; runtime was verified with all execution flags disabled and no real Facebook/browser/Telegram/AI access. No commit was made this sprint. Detail: [sprints/SPRINT-013-operational-hardening.md](sprints/SPRINT-013-operational-hardening.md).
 
 ## Definition of Done
 
-- [x] Migration `0010` (execution columns + 3 tables; nullable-unique keys); no credential/profile/cookie columns.
-- [x] Narrow adapter + deterministic fake (13 scenarios) + disabled Playwright boundary; verification + recovery pure.
-- [x] Verified-only success; exact typed-content equality; ambiguity never auto-retries; crash → ambiguous.
-- [x] Database-level idempotency: one active job/session and one verified success per identity; concurrent duplicate rejected.
-- [x] Five safety gates + kill-switch checks before execution and submit; Playwright refuses even fully flagged.
-- [x] API + Execution UI + `action:execution:*` CLI; per-route rate limits; ownership enforced (404); no secrets in responses.
-- [x] Remediation: doctor safety checks, production weak-credential guard, strict URL parsing, doc hygiene.
-- [x] Tests (376 passing, 57 new) with fake/mocks; full quality suite + `db:status` green; runtime verified with the fake adapter.
-- [x] Documentation + ADR-023/024/025/026. **No commit** made.
+- [x] Backup/restore scripts with all safety guarantees + tests.
+- [x] Browser-profile reconnect policy + safe diagnostics.
+- [x] Logging policy + rotation planning + `logs:verify`.
+- [x] Health endpoints + monitoring with thresholds and exit codes + tests.
+- [x] Process-supervision templates (disabled by default).
+- [x] Maintenance + lockdown persistent state, audited, enforced + tests.
+- [x] Operator-only Operations API + UI (safe, auditable) + tests.
+- [x] Controlled-write-test + pilot-readiness + incident + audit runbooks; ADR-027…030.
+- [x] Safe env vars; runtime state not `.env`-only. No secrets. **No commit.**
 
 ## Next
 
-On sign-off, the project proceeds to **SPRINT 013 — Real Facebook Comment Execution**: implement the real Playwright adapter behind this boundary — publish approved comments to Facebook, verified and evidenced, at concurrency one, gated by the kill switch and database idempotency, with its own execution verification and operator sign-off. See [12-mvp-roadmap.md](12-mvp-roadmap.md).
+On sign-off, the operator may perform the **controlled disposable Facebook write test** ([81](81-controlled-facebook-write-test.md)) and, on passing, begin **first pilot** onboarding ([82](82-pilot-readiness.md)). See [12-mvp-roadmap.md](12-mvp-roadmap.md).

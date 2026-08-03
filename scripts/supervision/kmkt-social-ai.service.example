@@ -1,0 +1,33 @@
+# systemd unit TEMPLATE for KMKT Social AI (SPRINT 013) — DISABLED BY DEFAULT.
+#
+# This wraps `docker compose` for the long-lived services only. It is a template:
+# do NOT enable it during this sprint. To install on the VPS (operator, deliberate):
+#
+#   sudo cp scripts/supervision/kmkt-social-ai.service.example \
+#           /etc/systemd/system/kmkt-social-ai.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now kmkt-social-ai.service
+#
+# It brings up mysql/api/web with the supervision override. It NEVER starts the
+# Collector or the Comment Executor — those remain explicit operator actions.
+# There is no auto-resume of an ambiguous Action result.
+
+[Unit]
+Description=KMKT Social AI (mysql + api + web, single VPS)
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/kmkt/projects/social-ai
+# Bounded start; the per-service restart policy lives in the compose override.
+ExecStart=/usr/bin/docker compose -f docker/compose/docker-compose.yml -f docker/compose/docker-compose.supervision.yml up -d mysql api web
+ExecStop=/usr/bin/docker compose -f docker/compose/docker-compose.yml -f docker/compose/docker-compose.supervision.yml stop mysql api web
+# Restart-storm protection at the unit level.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target

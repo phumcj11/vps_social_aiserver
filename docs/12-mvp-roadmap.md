@@ -129,7 +129,11 @@ Scope is bounded by [02-product-scope.md](02-product-scope.md) and [not-doing.md
 - **Exit criteria:** Approved comments are reliably published, verified, and screenshotted; the kill switch halts new writes; idempotency and retry rules hold; failures are surfaced.
 - **Main risks:** Unintended or duplicate posts; checkpoints. Mitigated by verification, idempotency, kill switch, and never bypassing CAPTCHAs.
 
-## Sprint 013 — History, Audit, Screenshot, and Stabilisation
+## Sprint 013 — Operational Hardening and Controlled Write Test Preparation
+
+- **Status:** **Complete (not committed).** Ahead of enabling any real write, Sprint 013 hardened operations: backups & restore, health & monitoring, maintenance mode, incident lockdown, an operator console, process-supervision templates, and the controlled-write-test + pilot-readiness runbooks — **no real Facebook write, no new product features**. The history/audit/screenshot/stabilisation work below folds into the pilot-readiness track ([82-pilot-readiness.md](82-pilot-readiness.md)); the first real write is the manual, reversible procedure in [81-controlled-facebook-write-test.md](81-controlled-facebook-write-test.md). Detail: [sprints/SPRINT-013-operational-hardening.md](sprints/SPRINT-013-operational-hardening.md).
+
+### (Original plan) History, Audit, Screenshot, and Stabilisation
 
 - **Goal:** Make the whole loop trustworthy, complete, and stable.
 - **Deliverables:** Approval History UI; complete, consistent audit trail; screenshot viewing; session-expiry recovery flow; System Status and kill-switch screen; resource and stability hardening within the VPS budget; consistency checks (e.g. no "success" without a screenshot).

@@ -140,6 +140,8 @@ Every arrow that changes state passes through the Backend, which is where rules 
 
 ## MVP Deployment Constraints (2 CPU cores, 3.8 GiB RAM)
 
+> **Operational hardening (SPRINT 013).** The single-VPS operational model, six runtime modes, backups/restore, health/monitoring, maintenance mode, incident lockdown, an operator console, and the controlled-write-test runbook are documented in [72-operational-architecture.md](72-operational-architecture.md)–[84-audit-investigation.md](84-audit-investigation.md) and [ADR-027](adr/ADR-027-single-vps-operational-model.md)–[ADR-030](adr/ADR-030-controlled-write-test-procedure.md). Maintenance and lockdown persist across restart; lockdown forces every write flag off and the kill switch on. No real Facebook write ships this sprint.
+
 The single-VPS budget shapes the architecture directly:
 
 - **Everything on one host.** Frontend, Backend, Database, n8n, Telegram bot, and Playwright run on the same VPS. No clustering.

@@ -38,7 +38,15 @@
     "action:execution:show": "tsx src/execution/cli.ts show",
     "action:execution:evidence": "tsx src/execution/cli.ts evidence",
     "action:execution:cancel": "tsx src/execution/cli.ts cancel",
-    "action:execution:dry-run": "tsx src/execution/cli.ts dry-run"
+    "action:execution:dry-run": "tsx src/execution/cli.ts dry-run",
+    "facebook:profile:status": "tsx src/facebook/profile-cli.ts status",
+    "facebook:profile:verify": "tsx src/facebook/profile-cli.ts verify",
+    "maintenance:enable": "tsx src/operations/cli.ts maintenance:enable",
+    "maintenance:disable": "tsx src/operations/cli.ts maintenance:disable",
+    "maintenance:status": "tsx src/operations/cli.ts maintenance:status",
+    "incident:lockdown": "tsx src/operations/cli.ts incident:lockdown",
+    "incident:unlock": "tsx src/operations/cli.ts incident:unlock",
+    "incident:status": "tsx src/operations/cli.ts incident:status"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",

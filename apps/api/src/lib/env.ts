@@ -22,6 +22,22 @@ const intFromString = (fallback: number) =>
     .pipe(z.number().int().positive())
     .default(fallback);
 
+/** Non-negative integer (allows 0, e.g. retention counts). */
+const nonNegIntFromString = (fallback: number) =>
+  z
+    .union([z.number(), z.string()])
+    .transform((v) => (typeof v === 'number' ? v : Number.parseInt(v, 10)))
+    .pipe(z.number().int().nonnegative())
+    .default(fallback);
+
+/** Positive float (e.g. load-average thresholds). */
+const floatFromString = (fallback: number) =>
+  z
+    .union([z.number(), z.string()])
+    .transform((v) => (typeof v === 'number' ? v : Number.parseFloat(v)))
+    .pipe(z.number().positive())
+    .default(fallback);
+
 export const apiEnvSchema = z.object({
   APP_ENV: z.enum(['development', 'test', 'production']).default('development'),
 
@@ -129,6 +145,44 @@ export const apiEnvSchema = z.object({
   EXECUTION_PREPARE_RATE_LIMIT_WINDOW_SECONDS: intFromString(60),
   EXECUTION_RECOVER_RATE_LIMIT_MAX: intFromString(10),
   EXECUTION_RECOVER_RATE_LIMIT_WINDOW_SECONDS: intFromString(60),
+
+  // ── Operational Hardening (SPRINT 013) ─────────────────────────────────────
+  // Maintenance and lockdown are toggled at runtime via a persistent state file
+  // (see OperationalStateStore), NOT via these .env defaults — the .env values
+  // are only the initial fallback when no state file exists yet.
+  MAINTENANCE_MODE: booleanish(false),
+  INCIDENT_LOCKDOWN: booleanish(false),
+
+  // Operator-only operations surface. Disabled → operations routes 404/403.
+  OPERATIONS_ENABLED: booleanish(true),
+  // Comma-separated operator emails; empty = no operators (operations locked).
+  OPERATIONS_OPERATOR_EMAILS: z.string().default(''),
+  OPERATIONS_RATE_LIMIT_MAX: intFromString(10),
+  OPERATIONS_RATE_LIMIT_WINDOW_MS: intFromString(60_000),
+
+  // Backups. BACKUP_ROOT must be OUTSIDE the repo; never contains secrets.
+  BACKUP_ROOT: z.string().default('/opt/kmkt/backups/social-ai'),
+  BACKUP_RETENTION_DAILY: nonNegIntFromString(7),
+  BACKUP_RETENTION_WEEKLY: nonNegIntFromString(4),
+  BACKUP_RETENTION_MONTHLY: nonNegIntFromString(3),
+  BACKUP_STALE_HOURS: intFromString(26),
+
+  // Logs.
+  LOG_RETENTION_DAYS: nonNegIntFromString(7),
+  LOG_MAX_SIZE_MB: intFromString(50),
+
+  // Monitoring thresholds.
+  MONITOR_DISK_WARNING_PERCENT: intFromString(80),
+  MONITOR_DISK_CRITICAL_PERCENT: intFromString(90),
+  MONITOR_RAM_WARNING_MB: intFromString(700),
+  MONITOR_RAM_CRITICAL_MB: intFromString(350),
+  MONITOR_SWAP_WARNING_PERCENT: intFromString(25),
+  MONITOR_SWAP_CRITICAL_PERCENT: intFromString(60),
+  MONITOR_LOAD_WARNING: floatFromString(1.5),
+  MONITOR_LOAD_CRITICAL: floatFromString(2.5),
+
+  // Where the persistent operational-state file lives (gitignored, no secrets).
+  OPERATIONS_STATE_FILE: z.string().default('storage/runtime/ops-state.json'),
 });
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>;

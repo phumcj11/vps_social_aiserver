@@ -47,6 +47,10 @@ import { ActionExecutor } from './execution/executor';
 import { ExecutionVerificationService } from './execution/verification';
 import { ExecutionRecoveryPolicy } from './execution/recovery';
 import { ExecutionCoordinator } from './execution/coordinator';
+import { OperationalStateStore } from './operations/state';
+import { OperationsService } from './operations/service';
+import { registerHealthRoutes, registerOperationsRoutes } from './operations/routes';
+import { isBlockedByMaintenance, isBlockedByLockdown } from './operations/guard';
 
 export interface ServerDeps {
   store: Store;
@@ -141,6 +145,41 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
 
   // Shared services.
   const audit = new AuditService(store);
+  // Operational hardening (SPRINT 013): persistent maintenance/lockdown state,
+  // health, monitoring, and the operator surface.
+  const opsStateStore = new OperationalStateStore(env.OPERATIONS_STATE_FILE);
+  const operations = new OperationsService({
+    store,
+    env,
+    audit,
+    stateStore: opsStateStore,
+    logger,
+    dbHealth: deps.dbHealth,
+  });
+
+  // Global enforcement of Maintenance and Incident Lockdown. A single hook keeps
+  // the policy in one place: maintenance blocks new work-initiating POSTs;
+  // lockdown blocks every Facebook-touching endpoint. Health, backups, and the
+  // operations surface itself remain available so an operator can recover.
+  app.addHook('onRequest', async (req, reply) => {
+    const method = req.method;
+    const path = req.url.split('?')[0] ?? '';
+    if (!isBlockedByMaintenance(method, path) && !isBlockedByLockdown(method, path)) return;
+    const state = await opsStateStore.read();
+    if (state.lockdown.enabled && isBlockedByLockdown(method, path)) {
+      reply
+        .code(423)
+        .send({ error: { code: 'incident_lockdown', message: 'Incident lockdown is active' } });
+      return reply;
+    }
+    if (state.maintenance.enabled && isBlockedByMaintenance(method, path)) {
+      reply
+        .code(503)
+        .send({ error: { code: 'maintenance_mode', message: 'Maintenance mode is active' } });
+      return reply;
+    }
+  });
+
   const profiles = new ProfileService(env.BROWSER_PROFILE_ROOT);
   const driver = deps.facebookDriver ?? new PlaywrightBrowserDriver();
   const facebook = new FacebookConnectionService({ store, profiles, driver, audit, env, logger });
@@ -228,6 +267,8 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   registerReviewRoutes(app, { store, env, reviews });
   registerActionRoutes(app, { store, env, actions });
   registerExecutionRoutes(app, { store, env, executions });
+  registerHealthRoutes(app, { store, env, operations });
+  registerOperationsRoutes(app, { store, env, operations });
 
   return app;
 }

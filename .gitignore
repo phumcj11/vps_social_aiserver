@@ -37,6 +37,9 @@ coverage/
 logs/
 *.log
 storage/logs/*
+# The log-management SCRIPTS are source, not runtime logs — keep them tracked.
+!scripts/logs/
+!scripts/logs/**
 !storage/logs/.gitkeep
 
 # ─── Playwright / browser runtime artefacts (reserved for later) ──────────
@@ -61,6 +64,10 @@ storage/screenshots/*
 !/storage/browser-profiles
 !/storage/logs
 !/storage/backups
+!/storage/runtime
+# Persistent operational state (maintenance/lockdown) — runtime only, never committed.
+/storage/runtime/*
+!/storage/runtime/.gitkeep
 
 # ─── Database volumes & dumps ─────────────────────────────────────────────
 docker/mysql/data/

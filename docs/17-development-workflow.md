@@ -127,6 +127,22 @@ The `ai-draft:*` commands (SPRINT 009) validate UUIDs, enforce workspace ownersh
 
 The `action:*` commands (SPRINT 011) validate UUIDs, enforce workspace scope, and operate the Action Queue **safe boundary** — they **never execute Facebook**, never run a worker, never print secrets or profile paths, and return useful exit codes. Under current defaults every job is **blocked**. See [63-action-queue-runbook.md](63-action-queue-runbook.md).
 
+### Operational commands (SPRINT 013)
+
+Operational scripts are safe by construction — they never print secrets, never contact Facebook, and (except the guarded destructive restore) never mutate data:
+
+```
+pnpm backup:database | backup:config | backup:audit | backup:all | backup:verify | backup:list | backup:cleanup
+pnpm restore:verify --backup <path>   |  restore:dry-run --backup <path>   |  restore:database --backup <path> --yes
+pnpm monitor:status | monitor:check | monitor:report          # exit 0/1/2 = OK/WARNING/CRITICAL
+pnpm logs:status | logs:rotate:dry-run | logs:verify
+pnpm facebook:profile:status --workspace <uuid>   |  facebook:profile:verify --workspace <uuid>
+pnpm maintenance:enable|disable --operator <email> --reason "<why>" --yes   |  maintenance:status
+pnpm incident:lockdown|unlock  --operator <email> --reason "<why>" --yes    |  incident:status
+```
+
+See [73-backup-policy.md](73-backup-policy.md)–[84-audit-investigation.md](84-audit-investigation.md). Maintenance/lockdown state persists across restart; the controlled write test is a manual runbook ([81-controlled-facebook-write-test.md](81-controlled-facebook-write-test.md)), never an automated command.
+
 ---
 
 ## No Direct Production Changes

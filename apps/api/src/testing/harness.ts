@@ -15,6 +15,10 @@ export interface TestAppOptions {
   profileRoot?: string;
   collectorBrowser?: CollectorBrowser;
   facebookReaderEnabled?: boolean;
+  /** Arbitrary env overrides (merged last), e.g. operator emails, state file. */
+  envOverrides?: Record<string, string>;
+  /** Optional async DB health probe (for health-endpoint tests). */
+  dbHealth?: () => Promise<boolean>;
 }
 
 /** Build an isolated test app backed by an in-memory store (no MySQL). */
@@ -23,6 +27,9 @@ export async function makeTestApp(
 ): Promise<{ app: FastifyInstance; store: InMemoryStore; profileRoot: string }> {
   const store = new InMemoryStore();
   const profileRoot = opts.profileRoot ?? mkdtempSync(join(tmpdir(), 'kmkt-profiles-'));
+  // Each test app gets an isolated operational-state file so maintenance/lockdown
+  // toggles never leak between tests or touch the repo's storage/ directory.
+  const stateFile = join(mkdtempSync(join(tmpdir(), 'kmkt-ops-')), 'ops-state.json');
   const env = loadApiEnv({
     APP_ENV: 'test',
     WEB_ORIGIN: 'http://localhost:3000',
@@ -38,6 +45,8 @@ export async function makeTestApp(
     COLLECTOR_MAX_SCROLLS: '2',
     COLLECTOR_MAX_POSTS_PER_GROUP: '30',
     COLLECTOR_TIMEOUT_MS: '3000',
+    OPERATIONS_STATE_FILE: stateFile,
+    ...(opts.envOverrides ?? {}),
   });
   const app = await buildServer({
     store,
@@ -45,6 +54,7 @@ export async function makeTestApp(
     logger: createLogger('error'),
     facebookDriver: opts.facebookDriver,
     collectorBrowser: opts.collectorBrowser,
+    dbHealth: opts.dbHealth,
   });
   return { app, store, profileRoot };
 }

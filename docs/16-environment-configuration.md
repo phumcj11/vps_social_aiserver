@@ -104,6 +104,27 @@ The execution foundation is exercised only through the deterministic **fake** ad
 | `EXECUTION_PREPARE_RATE_LIMIT_MAX` / `_WINDOW_SECONDS` | Rate limit on prepare-execution. | `10` / `60` | No | — |
 | `EXECUTION_RECOVER_RATE_LIMIT_MAX` / `_WINDOW_SECONDS` | Rate limit on recover. | `10` / `60` | No | — |
 
+### Operational Hardening (SPRINT 013)
+
+Maintenance and lockdown are toggled at RUNTIME via a persistent state file (`storage/runtime/ops-state.json`) and **survive restart**; the `.env` values below are only the initial fallback, never the source of truth once state exists. No secrets are added here.
+
+| Variable | Purpose | Safe default | Secret? | Security notes |
+| -------- | ------- | ------------ | ------- | -------------- |
+| `MAINTENANCE_MODE` | Initial maintenance fallback. | `false` | No | Runtime state file is authoritative. |
+| `INCIDENT_LOCKDOWN` | Initial lockdown fallback. | `false` | No | Lockdown forces write flags off + kill switch on (effective-safety override). |
+| `OPERATIONS_ENABLED` | Enables the operator surface. | `true` | No | When false, `/operations/*` returns 404. |
+| `OPERATIONS_OPERATOR_EMAILS` | Comma-separated operator allowlist. | *(empty)* | No | Empty = nobody is an operator; operations locked. Not a secret. |
+| `OPERATIONS_RATE_LIMIT_MAX` / `_WINDOW_MS` | Operations endpoint rate limit. | `10` / `60000` | No | — |
+| `BACKUP_ROOT` | Backup directory (OUTSIDE the repo). | `/opt/kmkt/backups/social-ai` | No | Never contains secrets; `0700`. |
+| `BACKUP_RETENTION_DAILY/WEEKLY/MONTHLY` | Retention tiers. | `7` / `4` / `3` | No | — |
+| `BACKUP_STALE_HOURS` | Backup staleness warning. | `26` | No | Surfaced by monitor + `/health/storage`. |
+| `LOG_RETENTION_DAYS` / `LOG_MAX_SIZE_MB` | Log rotation. | `7` / `50` | No | — |
+| `MONITOR_DISK_WARNING/CRITICAL_PERCENT` | Disk thresholds. | `80` / `90` | No | — |
+| `MONITOR_RAM_WARNING/CRITICAL_MB` | Free-RAM thresholds. | `700` / `350` | No | Lower is worse. |
+| `MONITOR_SWAP_WARNING/CRITICAL_PERCENT` | Swap thresholds. | `25` / `60` | No | — |
+| `MONITOR_LOAD_WARNING/CRITICAL` | Load-average thresholds. | `1.5` / `2.5` | No | — |
+| `OPERATIONS_STATE_FILE` | Persistent maintenance/lockdown state. | `storage/runtime/ops-state.json` | No | Gitignored; `0600`; no secrets. |
+
 ### Concurrency (conservative for the VPS)
 
 | Variable | Purpose | Safe default | Secret? | Relevant from | Security notes |

@@ -122,6 +122,28 @@ export class ProfileService {
   }
 
   /**
+   * SAFE diagnostic status for a workspace's browser profile (SPRINT 013).
+   * Reports ONLY whether the profile exists and whether it is locked (with the
+   * lock's age). It NEVER returns the path, cookies, localStorage, or any
+   * session material — those must never leave this service.
+   */
+  async profileStatus(
+    workspaceId: string,
+  ): Promise<{ exists: boolean; locked: boolean; lockAgeSeconds: number | null }> {
+    const exists = existsSync(this.absolutePath(workspaceId));
+    let locked = false;
+    let lockAgeSeconds: number | null = null;
+    try {
+      const info = await stat(this.lockPath(workspaceId));
+      locked = true;
+      lockAgeSeconds = Math.round((Date.now() - info.mtimeMs) / 1000);
+    } catch {
+      locked = false;
+    }
+    return { exists, locked, lockAgeSeconds };
+  }
+
+  /**
    * Delete the entire workspace profile directory (explicit disconnect only).
    * Throws PROFILE_CLEANUP_FAILED if removal fails, so the caller can mark
    * cleanup-required and surface it (no silent failure).

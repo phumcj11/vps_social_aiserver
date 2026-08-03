@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, isNull, inArray } from 'drizzle-orm';
+import { eq, and, desc, sql, isNull, inArray, lt } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import {
   users,
@@ -119,6 +119,8 @@ import type {
   IdempotencyStatus,
   CreateIdempotencyRecordInput,
   UpdateIdempotencyRecordInput,
+  OperationalCountsInput,
+  OperationalCounts,
 } from './types';
 import { ACTIVE_ACTION_STATUSES, ACTIVE_EXECUTION_STATUSES } from './types';
 
@@ -2125,6 +2127,66 @@ export class DrizzleStore implements Store {
       facebookCommentId: row.facebookCommentId,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+    };
+  }
+
+  async getOperationalCounts(input: OperationalCountsInput): Promise<OperationalCounts> {
+    const actionCutoff = new Date(input.now.getTime() - input.actionProcessingStaleMs);
+    const collectorCutoff = new Date(input.now.getTime() - input.collectorRunningStaleMs);
+
+    const jobRows = await this.db
+      .select({ status: actionJobs.status, n: sql<number>`count(*)` })
+      .from(actionJobs)
+      .groupBy(actionJobs.status);
+    const aj = {
+      total: 0,
+      queued: 0,
+      blocked: 0,
+      processing: 0,
+      succeeded: 0,
+      failed: 0,
+      cancelled: 0,
+    };
+    for (const r of jobRows) {
+      const n = Number(r.n);
+      aj.total += n;
+      if (r.status in aj) (aj as Record<string, number>)[r.status] = n;
+    }
+
+    const sessRows = await this.db
+      .select({ status: actionExecutionSessions.status, n: sql<number>`count(*)` })
+      .from(actionExecutionSessions)
+      .groupBy(actionExecutionSessions.status);
+    const es = { total: 0, active: 0, ambiguous: 0, failed: 0, verified: 0 };
+    for (const r of sessRows) {
+      const n = Number(r.n);
+      es.total += n;
+      if (
+        ACTIVE_EXECUTION_STATUSES.includes(r.status as (typeof ACTIVE_EXECUTION_STATUSES)[number])
+      ) {
+        es.active += n;
+      }
+      if (r.status === 'ambiguous') es.ambiguous += n;
+      if (r.status === 'failed') es.failed += n;
+      if (r.status === 'verified') es.verified += n;
+    }
+
+    const [stuckJobs] = await this.db
+      .select({ n: sql<number>`count(*)` })
+      .from(actionJobs)
+      .where(and(eq(actionJobs.status, 'processing'), lt(actionJobs.startedAt, actionCutoff)));
+    const [stuckRuns] = await this.db
+      .select({ n: sql<number>`count(*)` })
+      .from(collectorRuns)
+      .where(
+        and(eq(collectorRuns.status, 'running'), lt(collectorRuns.startedAt, collectorCutoff)),
+      );
+
+    return {
+      actionJobs: aj,
+      executionSessions: es,
+      stuckActionJobs: Number(stuckJobs?.n ?? 0),
+      stuckCollectorRuns: Number(stuckRuns?.n ?? 0),
     };
   }
 }

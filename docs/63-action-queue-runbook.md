@@ -6,6 +6,8 @@
 
 Operational guide for the Action Queue. This sprint the queue is a **safe boundary only** — it never executes a Facebook action and runs no worker.
 
+> **Operations (SPRINT 013):** while **maintenance mode** is on, new Action Jobs and execution preparation are rejected; while **incident lockdown** is on, all Facebook-touching operations are blocked and write flags are forced off. See [79-maintenance-mode.md](79-maintenance-mode.md), [80-incident-lockdown.md](80-incident-lockdown.md), and the operator console at `/settings/operations`.
+
 ---
 
 ## Safety posture (must hold by default)
