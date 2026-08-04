@@ -61,7 +61,8 @@ async function main(): Promise<void> {
     const r = status.run;
     console.log(
       `  status=${r?.status} groups=${r?.groupsProcessed} posts=${r?.postsCollected} ` +
-        `errors=${r?.errors} totalSignals=${status.totalSignals} note=${r?.errorSummary ?? '(none)'}`,
+        `dupsSkipped=${r?.duplicatesSkipped} errors=${r?.errors} totalSignals=${status.totalSignals} ` +
+        `note=${r?.errorSummary ?? '(none)'}`,
     );
     exitCode = r?.status === 'completed' ? 0 : r?.status === 'paused' ? 1 : 2;
   } catch (err) {

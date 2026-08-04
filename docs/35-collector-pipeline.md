@@ -25,7 +25,7 @@ Converts each raw capture into a normalized, platform-neutral Signal: whitespace
 
 ### 4. Persistence (Repository → database)
 For each capture, in order:
-1. **Duplicate detection** — post URL → facebook_post_id → normalized hash. If any matches, skip.
+1. **Duplicate detection** — post URL → facebook_post_id → normalized hash. If any matches, skip. Persistence is **idempotent** (Pilot 0 fix): a duplicate — including a unique-constraint race or a pinned post rendered twice — is a graceful skip counted as `duplicatesSkipped`, never a `REPOSITORY_ERROR`, and never rewrites an existing Signal. See [86-collector-duplicate-handling.md](86-collector-duplicate-handling.md).
 2. Insert the **immutable raw signal** (with a `contentHash`).
 3. Insert the **normalized signal**.
 4. Update the group **checkpoint** (last post, last scan, last cursor).

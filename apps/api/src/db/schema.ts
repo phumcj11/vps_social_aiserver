@@ -456,6 +456,8 @@ export const collectorRuns = mysqlTable(
     finishedAt: datetime('finished_at'),
     groupsProcessed: int('groups_processed').notNull().default(0),
     postsCollected: int('posts_collected').notNull().default(0),
+    // Duplicate posts skipped idempotently (Pilot 0 fix) — NOT errors.
+    duplicatesSkipped: int('duplicates_skipped').notNull().default(0),
     errors: int('errors').notNull().default(0),
     // Safe, human-readable error/outcome classifications (no post text, no secrets).
     errorSummary: text('error_summary'),

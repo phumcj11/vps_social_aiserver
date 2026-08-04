@@ -835,6 +835,7 @@ export class InMemoryStore implements Store {
       finishedAt: null,
       groupsProcessed: 0,
       postsCollected: 0,
+      duplicatesSkipped: 0,
       errors: 0,
       errorSummary: null,
       createdAt: now,
@@ -853,6 +854,7 @@ export class InMemoryStore implements Store {
     if (input.finishedAt !== undefined) r.finishedAt = input.finishedAt;
     if (input.groupsProcessed !== undefined) r.groupsProcessed = input.groupsProcessed;
     if (input.postsCollected !== undefined) r.postsCollected = input.postsCollected;
+    if (input.duplicatesSkipped !== undefined) r.duplicatesSkipped = input.duplicatesSkipped;
     if (input.errors !== undefined) r.errors = input.errors;
     if (input.errorSummary !== undefined) r.errorSummary = input.errorSummary;
     return { ...r };
@@ -950,6 +952,19 @@ export class InMemoryStore implements Store {
     const o = this.opportunities.get(id);
     if (!o) return null;
     o.status = status;
+    o.updatedAt = this.now();
+    return { ...o };
+  }
+
+  async updateOpportunityDecision(
+    id: string,
+    input: { decision: OpportunityDecision; status: OpportunityStatus; classifierVersion: string },
+  ): Promise<OpportunityRecord | null> {
+    const o = this.opportunities.get(id);
+    if (!o) return null;
+    o.decision = input.decision;
+    o.status = input.status;
+    o.classifierVersion = input.classifierVersion;
     o.updatedAt = this.now();
     return { ...o };
   }

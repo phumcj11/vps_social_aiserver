@@ -64,7 +64,9 @@
     "maintenance:status": "pnpm --filter @kmkt/api maintenance:status",
     "incident:lockdown": "pnpm --filter @kmkt/api incident:lockdown",
     "incident:unlock": "pnpm --filter @kmkt/api incident:unlock",
-    "incident:status": "pnpm --filter @kmkt/api incident:status"
+    "incident:status": "pnpm --filter @kmkt/api incident:status",
+    "opportunity:classify": "pnpm --filter @kmkt/api opportunity:classify",
+    "opportunity:reclassify": "pnpm --filter @kmkt/api opportunity:reclassify"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

@@ -376,6 +376,7 @@ export interface CollectorRunRecord {
   finishedAt: Date | null;
   groupsProcessed: number;
   postsCollected: number;
+  duplicatesSkipped: number;
   errors: number;
   errorSummary: string | null;
   createdAt: Date;
@@ -386,6 +387,7 @@ export interface UpdateCollectorRunInput {
   finishedAt?: Date | null;
   groupsProcessed?: number;
   postsCollected?: number;
+  duplicatesSkipped?: number;
   errors?: number;
   errorSummary?: string | null;
 }
@@ -1014,6 +1016,12 @@ export interface Store {
     filter?: { status?: OpportunityStatus; decision?: OpportunityDecision; limit?: number },
   ): Promise<OpportunityRecord[]>;
   updateOpportunityStatus(id: string, status: OpportunityStatus): Promise<OpportunityRecord | null>;
+  /** Reclassification (Pilot 0 fix): update decision+status+version in place
+   * (one Opportunity per Signal is preserved; the change is audited by event). */
+  updateOpportunityDecision(
+    id: string,
+    input: { decision: OpportunityDecision; status: OpportunityStatus; classifierVersion: string },
+  ): Promise<OpportunityRecord | null>;
   opportunityExistsForSignalHash(workspaceId: string, normalizedHash: string): Promise<boolean>;
   getOpportunityStatistics(workspaceId: string): Promise<OpportunityStatistics>;
 

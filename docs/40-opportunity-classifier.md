@@ -55,7 +55,9 @@ The Decision is **ACCEPT only if every rule passes**; otherwise **REJECT**. See 
 
 ## Classifier version
 
-Every Opportunity records the `classifier_version` that produced it (currently `rules-v1`). This makes classification auditable and lets the rule set evolve without rewriting history: a later `rules-v2` can re-classify without ambiguity about which rules applied.
+Every Opportunity records the `classifier_version` that produced it. This makes classification auditable and lets the rule set evolve without rewriting history.
+
+> **rules-v2 (Pilot 0 correction).** The classifier now decides on **customer demand**, not structural completeness: it ACCEPTs genuine accommodation-seeking posts and REJECTs advertiser / owner / agent / property-code listings, deterministically (still no AI/score). Author presence and minimum length no longer gate ACCEPT. Existing Opportunities can be safely re-evaluated with `pnpm opportunity:reclassify` (updates in place, records an `OpportunityReclassified` event, never rewrites earlier events). See [85-pilot0-classifier-correction.md](85-pilot0-classifier-correction.md).
 
 ---
 

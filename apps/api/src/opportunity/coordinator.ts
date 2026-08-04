@@ -17,7 +17,17 @@ export const OpportunityEventType = {
   OpportunityCreated: 'OpportunityCreated',
   OpportunityRejected: 'OpportunityRejected',
   OpportunityArchived: 'OpportunityArchived',
+  // Pilot 0 fix: a deterministic re-evaluation changed the decision. The prior
+  // decision is preserved in the payload and earlier events are never rewritten.
+  OpportunityReclassified: 'OpportunityReclassified',
 } as const;
+
+export interface ReclassifyRunSummary {
+  processed: number;
+  changed: number;
+  accepted: number;
+  rejected: number;
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const VALID_STATUSES: OpportunityStatus[] = ['NEW', 'READY', 'ARCHIVED'];
@@ -123,6 +133,58 @@ export class OpportunityCoordinator {
     } finally {
       this.active.delete(workspaceId);
     }
+  }
+
+  /**
+   * Re-evaluate EXISTING Opportunities with the current classifier (Pilot 0
+   * fix). One Opportunity per Signal is preserved — a changed decision updates
+   * that Opportunity in place and records an OpportunityReclassified event that
+   * retains the prior decision. Earlier events are never rewritten. Idempotent:
+   * running again with no rule change makes no further changes.
+   */
+  async reclassifyAll(workspaceId: string): Promise<ReclassifyRunSummary> {
+    this.assertWorkspace(workspaceId);
+    const opps = await this.deps.repo.listOpportunities(workspaceId, { limit: 100000 });
+    let changed = 0;
+    let accepted = 0;
+    let rejected = 0;
+    for (const opp of opps) {
+      const signal = await this.deps.repo.getSignalById(opp.signalId);
+      if (!signal) continue;
+      const result = classifySignal(
+        { message: signal.message, authorName: signal.authorName, postUrl: signal.postUrl },
+        { minTextLength: this.deps.env.OPPORTUNITY_MIN_TEXT_LENGTH, isDuplicate: false },
+      );
+      if (result.decision === 'ACCEPT') accepted += 1;
+      else rejected += 1;
+
+      const decisionChanged = result.decision !== opp.decision;
+      const versionChanged = opp.classifierVersion !== CLASSIFIER_VERSION;
+      if (!decisionChanged && !versionChanged) continue;
+
+      const status: OpportunityStatus = result.decision === 'ACCEPT' ? 'READY' : 'ARCHIVED';
+      await this.deps.repo.updateDecision(opp.id, {
+        decision: result.decision,
+        status,
+        classifierVersion: CLASSIFIER_VERSION,
+      });
+      await this.deps.repo.createEvent(opp.id, OpportunityEventType.OpportunityReclassified, {
+        from: opp.decision,
+        to: result.decision,
+        fromVersion: opp.classifierVersion,
+        toVersion: CLASSIFIER_VERSION,
+        reasons: result.reasons,
+      });
+      if (decisionChanged) changed += 1;
+    }
+    this.deps.logger.info('opportunity.reclassify_run', {
+      workspaceId,
+      processed: opps.length,
+      changed,
+      accepted,
+      rejected,
+    });
+    return { processed: opps.length, changed, accepted, rejected };
   }
 
   getStatistics(workspaceId: string): Promise<OpportunityStatistics> {

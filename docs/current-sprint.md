@@ -2,7 +2,9 @@
 
 ## Current Sprint
 
-**SPRINT 013 — Operational Hardening and Controlled Write Test Preparation**
+**SPRINT 013 — Operational Hardening and Controlled Write Test Preparation** (merged) → **PILOT 0 — Phase 3 corrective fixes** (branch `feature/pilot0-classifier-dedup-fix`, not committed)
+
+> **Pilot 0 status:** Read-only Collector validation ran over six real pilot groups (PARTIAL_PASS). Two blockers found and fixed: (1) the Opportunity Classifier accepted advertiser posts and rejected genuine customer-intent posts — corrected to intent-driven **`rules-v2`** with a safe `opportunity:reclassify` path; (2) duplicate posts surfaced as `REPOSITORY_ERROR` — the Collector now skips duplicates idempotently and reports `duplicatesSkipped` (migration `0011`). Verified end-to-end on the Pilot data: 2 accept / 7 reject after reclassification, **1 correct MATCH** (0 wrong-area), **1 Mock draft**; Cha-am retest completes with no `REPOSITORY_ERROR`. No Facebook write, no external AI. Detail: [sprints/PILOT-000-phase3-corrective-fixes.md](sprints/PILOT-000-phase3-corrective-fixes.md), [85](85-pilot0-classifier-correction.md), [86](86-collector-duplicate-handling.md).
 
 ## Objectives
 

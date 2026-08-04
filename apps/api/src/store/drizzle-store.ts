@@ -1057,6 +1057,7 @@ export class DrizzleStore implements Store {
     if (input.finishedAt !== undefined) set.finishedAt = input.finishedAt;
     if (input.groupsProcessed !== undefined) set.groupsProcessed = input.groupsProcessed;
     if (input.postsCollected !== undefined) set.postsCollected = input.postsCollected;
+    if (input.duplicatesSkipped !== undefined) set.duplicatesSkipped = input.duplicatesSkipped;
     if (input.errors !== undefined) set.errors = input.errors;
     if (input.errorSummary !== undefined) set.errorSummary = input.errorSummary;
     if (Object.keys(set).length > 0) {
@@ -1148,6 +1149,7 @@ export class DrizzleStore implements Store {
       finishedAt: row.finishedAt,
       groupsProcessed: row.groupsProcessed,
       postsCollected: row.postsCollected,
+      duplicatesSkipped: row.duplicatesSkipped,
       errors: row.errors,
       errorSummary: row.errorSummary,
       createdAt: row.createdAt,
@@ -1251,6 +1253,21 @@ export class DrizzleStore implements Store {
     status: OpportunityStatus,
   ): Promise<OpportunityRecord | null> {
     await this.db.update(opportunities).set({ status }).where(eq(opportunities.id, id));
+    return this.getOpportunityById(id);
+  }
+
+  async updateOpportunityDecision(
+    id: string,
+    input: { decision: OpportunityDecision; status: OpportunityStatus; classifierVersion: string },
+  ): Promise<OpportunityRecord | null> {
+    await this.db
+      .update(opportunities)
+      .set({
+        decision: input.decision,
+        status: input.status,
+        classifierVersion: input.classifierVersion,
+      })
+      .where(eq(opportunities.id, id));
     return this.getOpportunityById(id);
   }
 

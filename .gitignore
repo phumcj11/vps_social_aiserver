@@ -46,6 +46,10 @@ storage/logs/*
 # Browser profiles, cookies and session files MUST NEVER be committed.
 storage/browser-profiles/*
 !storage/browser-profiles/.gitkeep
+# Live Facebook session storage created when the app runs with cwd=apps/api
+# (connected browser profile). MUST NEVER be committed — session material only.
+/apps/api/storage/**
+!/apps/api/storage/.gitkeep
 *.cookies
 cookies/
 *.session

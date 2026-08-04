@@ -50,6 +50,7 @@ export interface CollectorRunSummary {
   finishedAt: string | null;
   groupsProcessed: number;
   postsCollected: number;
+  duplicatesSkipped: number;
   errors: number;
   errorSummary: string | null;
   durationMs: number | null;

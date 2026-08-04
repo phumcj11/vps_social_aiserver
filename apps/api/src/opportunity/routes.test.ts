@@ -59,7 +59,7 @@ describe('opportunity API', () => {
   it('classifies signals, lists opportunities, and reports statistics', async () => {
     const { app, store } = await makeTestApp();
     const { token, workspaceId } = await setup(app);
-    await seedSignal(store, workspaceId, 'Looking for a plumber in Bangkok this weekend');
+    await seedSignal(store, workspaceId, 'หาที่พักบางแสน 4 คน ใกล้ทะเล');
     await seedSignal(store, workspaceId, 'help'); // too short → REJECT
 
     const classify = await app.inject({
@@ -101,7 +101,7 @@ describe('opportunity API', () => {
   it('returns detail with decision, reasons, signal, and events', async () => {
     const { app, store } = await makeTestApp();
     const { token, workspaceId } = await setup(app);
-    await seedSignal(store, workspaceId, 'Looking for a caterer for 40 people next month');
+    await seedSignal(store, workspaceId, 'หาพูลวิลล่าพัทยา 10 คน วันเสาร์');
     await app.inject({
       method: 'POST',
       url: '/opportunities/classify',
@@ -121,9 +121,13 @@ describe('opportunity API', () => {
     });
     const body = detail.json();
     expect(body.opportunity.decision).toBe('ACCEPT');
-    expect(body.signal.message).toContain('caterer');
+    expect(body.signal.message).toContain('พูลวิลล่า');
     expect(body.events[0].event).toBe('OpportunityCreated');
-    expect(body.events[0].payload.reasons.length).toBe(7);
+    expect(
+      body.events[0].payload.reasons.some(
+        (r: { code: string; passed: boolean }) => r.code === 'CUSTOMER_SEARCH_INTENT' && r.passed,
+      ),
+    ).toBe(true);
     await app.close();
   });
 
@@ -162,7 +166,7 @@ describe('opportunity API', () => {
   it("a user cannot access another workspace's opportunity", async () => {
     const { app, store } = await makeTestApp();
     const a = await setup(app);
-    await seedSignal(store, a.workspaceId, 'Looking for a plumber in Bangkok this weekend');
+    await seedSignal(store, a.workspaceId, 'หาที่พักบางแสน 4 คน ใกล้ทะเล');
     await app.inject({
       method: 'POST',
       url: '/opportunities/classify',

@@ -46,7 +46,9 @@
     "maintenance:status": "tsx src/operations/cli.ts maintenance:status",
     "incident:lockdown": "tsx src/operations/cli.ts incident:lockdown",
     "incident:unlock": "tsx src/operations/cli.ts incident:unlock",
-    "incident:status": "tsx src/operations/cli.ts incident:status"
+    "incident:status": "tsx src/operations/cli.ts incident:status",
+    "opportunity:classify": "tsx src/opportunity/cli.ts classify",
+    "opportunity:reclassify": "tsx src/opportunity/cli.ts reclassify"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",

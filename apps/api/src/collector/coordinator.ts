@@ -37,6 +37,7 @@ function toSummary(run: CollectorRunRecord): CollectorRunSummary {
     finishedAt: run.finishedAt ? run.finishedAt.toISOString() : null,
     groupsProcessed: run.groupsProcessed,
     postsCollected: run.postsCollected,
+    duplicatesSkipped: run.duplicatesSkipped,
     errors: run.errors,
     errorSummary: run.errorSummary,
     durationMs,
@@ -152,6 +153,7 @@ export class CollectorCoordinator {
 
         let groupsProcessed = 0;
         let postsCollected = 0;
+        let duplicatesSkipped = 0;
         let errors = 0;
         const notes: string[] = [];
 
@@ -176,14 +178,23 @@ export class CollectorCoordinator {
                 facebookPostId: capture.facebookPostId,
                 normalizedHash: normalized.normalizedHash,
               });
-              if (dup) continue;
-              await repo.persistSignal({
+              if (dup) {
+                duplicatesSkipped += 1;
+                continue;
+              }
+              const persisted = await repo.persistSignal({
                 workspaceId,
                 groupId: group.id,
                 capture,
                 contentHash: contentHashOf(capture),
                 normalized,
               });
+              // A duplicate detected only at insert time (a race) is a safe skip,
+              // NOT a new post and NOT an error.
+              if (!persisted.inserted) {
+                duplicatesSkipped += 1;
+                continue;
+              }
               groupPosts += 1;
               postsCollected += 1;
               lastUrl = capture.postUrl;
@@ -206,12 +217,15 @@ export class CollectorCoordinator {
           } catch (err) {
             errors += 1;
             const code = this.classify(err);
+            // Safe detail: the CollectorError message carries only a code
+            // (e.g. "…(ER_DATA_TOO_LONG)") — never post content or secrets.
+            const detail = err instanceof CollectorError ? err.message : '';
             notes.push(`${group.id}:${code}`);
             await audit.record(AuditEventTypes.CollectorGroupError, {
               workspaceId,
               payload: { runId, groupId: group.id, code },
             });
-            logger.warn('collector.group_error', { workspaceId, groupId: group.id, code });
+            logger.warn('collector.group_error', { workspaceId, groupId: group.id, code, detail });
           }
         }
 
@@ -221,6 +235,7 @@ export class CollectorCoordinator {
           finishedAt: new Date(),
           groupsProcessed,
           postsCollected,
+          duplicatesSkipped,
           errors,
           errorSummary: notes.length > 0 ? notes.join('; ') : null,
         });

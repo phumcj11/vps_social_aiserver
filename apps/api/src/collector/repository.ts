@@ -10,6 +10,19 @@ import { newId } from '../lib/tokens';
 import { CollectorError, CollectorErrorCode } from './errors';
 import type { RawSignalCapture, NormalizedSignalData } from './types';
 
+/** True when an error is a database unique-constraint (duplicate key) conflict. */
+function isDuplicateKeyError(err: unknown): boolean {
+  const e = err as { code?: string; errno?: number; message?: string };
+  return (
+    e?.code === 'ER_DUP_ENTRY' || e?.errno === 1062 || /duplicate|unique/i.test(e?.message ?? '')
+  );
+}
+
+/** Result of a persistence attempt — `inserted:false` means an idempotent skip. */
+export interface PersistResult {
+  inserted: boolean;
+}
+
 /**
  * CollectorRepository (SPRINT 006).
  *
@@ -73,28 +86,53 @@ export class CollectorRepository {
     return false;
   }
 
-  /** Persist the immutable raw capture and the normalized Signal. */
+  /**
+   * Persist the immutable raw capture and the normalized Signal — IDEMPOTENTLY.
+   *
+   * A duplicate post (same canonical URL, Facebook post id, or normalized hash)
+   * is a normal, expected condition (pinned posts render twice; re-runs re-see
+   * the same feed). It must NOT become a REPOSITORY_ERROR: we pre-check every
+   * identity, and we also catch a unique-constraint (duplicate-key) race and
+   * convert it into an idempotent skip. An existing Signal is NEVER rewritten.
+   * Returns `{ inserted: false }` for a skip so the caller can count it.
+   */
   async persistSignal(input: {
     workspaceId: string;
     groupId: string;
     capture: RawSignalCapture;
     contentHash: string;
     normalized: NormalizedSignalData;
-  }): Promise<void> {
+  }): Promise<PersistResult> {
     const { workspaceId, groupId, capture, contentHash, normalized } = input;
+
+    // Duplicate normalized Signal already exists (URL → post id → hash)?
+    const exists =
+      (await this.store.signalExistsByUrl(workspaceId, normalized.postUrl)) ||
+      (normalized.facebookPostId
+        ? await this.store.signalExistsByFacebookPostId(workspaceId, normalized.facebookPostId)
+        : false) ||
+      (await this.store.signalExistsByHash(workspaceId, normalized.normalizedHash));
+    if (exists) return { inserted: false };
+
     try {
+      // Raw capture: guarded insert; a duplicate-key race is an idempotent skip.
       if (!(await this.store.rawSignalExistsByUrl(workspaceId, capture.postUrl))) {
-        await this.store.createRawSignal({
-          id: newId(),
-          workspaceId,
-          groupId,
-          facebookPostId: capture.facebookPostId,
-          postUrl: capture.postUrl,
-          rawHtml: capture.rawHtml,
-          rawJson: capture.rawJson,
-          contentHash,
-        });
+        try {
+          await this.store.createRawSignal({
+            id: newId(),
+            workspaceId,
+            groupId,
+            facebookPostId: capture.facebookPostId,
+            postUrl: capture.postUrl,
+            rawHtml: capture.rawHtml,
+            rawJson: capture.rawJson,
+            contentHash,
+          });
+        } catch (err) {
+          if (!isDuplicateKeyError(err)) throw err;
+        }
       }
+
       await this.store.createSignal({
         id: newId(),
         workspaceId,
@@ -108,10 +146,16 @@ export class CollectorRepository {
         createdTime: normalized.createdTime,
         normalizedHash: normalized.normalizedHash,
       });
+      return { inserted: true };
     } catch (err) {
+      // A duplicate-key conflict here is a race (another insert won) — skip it.
+      if (isDuplicateKeyError(err)) return { inserted: false };
+      // Surface only a SAFE DB error code (e.g. ER_DATA_TOO_LONG) — never the
+      // offending value / post content.
+      const dbCode = (err as { code?: string }).code;
       throw new CollectorError(
         CollectorErrorCode.REPOSITORY_ERROR,
-        `Signal persistence failed: ${(err as Error).message}`,
+        `Signal persistence failed${dbCode ? ` (${dbCode})` : ''}`,
       );
     }
   }

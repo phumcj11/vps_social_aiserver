@@ -16,7 +16,7 @@ function seedSignal(ws: string, overrides: Partial<CreateSignalInput> = {}): Cre
     postUrl: `https://www.facebook.com/groups/123/posts/${randomUUID().slice(0, 8)}`,
     authorName: 'Jane',
     authorProfile: null,
-    message: 'Looking for a plumber in Bangkok this weekend',
+    message: 'หาที่พักบางแสน 4 คน ใกล้ทะเล เสาร์นี้', // customer intent → ACCEPT (rules-v2)
     mediaUrls: [],
     createdTime: null,
     normalizedHash: randomUUID(),

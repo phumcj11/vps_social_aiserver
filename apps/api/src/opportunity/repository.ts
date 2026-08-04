@@ -77,6 +77,13 @@ export class OpportunityRepository {
     return this.store.updateOpportunityStatus(id, status);
   }
 
+  updateDecision(
+    id: string,
+    input: { decision: OpportunityDecision; status: OpportunityStatus; classifierVersion: string },
+  ): Promise<OpportunityRecord | null> {
+    return this.store.updateOpportunityDecision(id, input);
+  }
+
   statistics(workspaceId: string): Promise<OpportunityStatistics> {
     return this.store.getOpportunityStatistics(workspaceId);
   }

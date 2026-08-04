@@ -1,0 +1,1 @@
+ALTER TABLE `collector_runs` ADD `duplicates_skipped` int DEFAULT 0 NOT NULL;
