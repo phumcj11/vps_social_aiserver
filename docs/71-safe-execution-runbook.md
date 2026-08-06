@@ -16,7 +16,9 @@ Real execution requires ALL of these, and this sprint keeps them in their safe s
 | `GLOBAL_KILL_SWITCH` | `true` |
 | `FACEBOOK_COMMENT_ADAPTER` | `fake` |
 
-Even with every flag flipped, the Playwright adapter **still refuses** (`REAL_WRITE_FORBIDDEN`) — real execution is a separate, deliberate future change, not a config flip ([ADR-026](adr/ADR-026-playwright-adapter-disabled-boundary.md)).
+The **real** Playwright comment path now exists behind these gates ([87](87-real-facebook-comment-adapter.md), [ADR-031](adr/ADR-031-real-facebook-comment-adapter.md)) — it replaced the former unconditional `REAL_WRITE_FORBIDDEN`. It still refuses to type or submit unless **every** gate passes together **and** the executor grants an explicit one-shot authorization in `submit_once` mode, with the kill switch re-checked immediately before submit. Under the safe defaults above, submit is always refused and nothing is typed.
+
+**Read-only readiness probe (no write):** `pnpm --filter @kmkt/api action:execution:prepare-live --workspace <ws> --action <job>` runs `prepare_only` — it opens the exact target, validates session/identity/comments/duplicate/composer, then closes. It types/submits nothing and needs no write flag. Run it (operator-supervised, as the non-root browser user) to validate live selectors before any `submit_once`. The one real write remains the separate procedure in [81-controlled-facebook-write-test.md](81-controlled-facebook-write-test.md); there is **no** Execute-Now command/API/UI.
 
 ## API
 

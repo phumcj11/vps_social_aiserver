@@ -35,6 +35,7 @@
     "action:retry": "tsx src/action/cli.ts retry",
     "action:recheck": "tsx src/action/cli.ts recheck",
     "action:execution:prepare": "tsx src/execution/cli.ts prepare",
+    "action:execution:prepare-live": "tsx src/execution/cli.ts prepare-live",
     "action:execution:show": "tsx src/execution/cli.ts show",
     "action:execution:evidence": "tsx src/execution/cli.ts evidence",
     "action:execution:cancel": "tsx src/execution/cli.ts cancel",

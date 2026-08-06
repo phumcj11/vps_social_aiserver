@@ -1,6 +1,8 @@
 # ADR-026 — Playwright Comment Adapter is a Disabled Boundary
 
-- **Status:** Accepted
+> **Superseded by [ADR-031](ADR-031-real-facebook-comment-adapter.md) (2026-08-04).** The unconditional `REAL_WRITE_FORBIDDEN` described here has been replaced by the real, fully-gated comment path. Real writes remain **disabled by default**; enabling one is a deliberate, gated, operator-supervised procedure — not a config flip. This ADR is retained for history.
+
+- **Status:** Superseded by ADR-031
 - **Date:** 2026-08-02
 - **Sprint:** SPRINT 012 — Facebook Comment Adapter and Safe Execution Foundation
 - **Deciders:** Principal Software Architect / Senior Full Stack Engineer

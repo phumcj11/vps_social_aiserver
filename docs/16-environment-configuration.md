@@ -91,7 +91,7 @@ The execution foundation is exercised only through the deterministic **fake** ad
 
 | Variable | Purpose | Safe default | Secret? | Security notes |
 | -------- | ------- | ------------ | ------- | -------------- |
-| `FACEBOOK_COMMENT_ADAPTER` | Selects the comment adapter. | `fake` | No | `fake` is the only functional path; `playwright` is a disabled boundary that refuses. Doctor asserts `fake`. |
+| `FACEBOOK_COMMENT_ADAPTER` | Selects the comment adapter. | `fake` | No | `fake` is the safe default. `playwright` selects the **real gated adapter** ([87](87-real-facebook-comment-adapter.md)); it still refuses to type/submit unless every enablement flag is set **and** the executor grants an explicit one-shot `submit_once` authorization. Doctor asserts `fake` as the safe posture. |
 | `FACEBOOK_WRITE_ACTION_ENABLED` | Enables Facebook write actions. | `false` | No | One of the five execution gates; safe default off. |
 | `FACEBOOK_COMMENT_ENABLED` | Enables the comment action specifically. | `false` | No | One of the five execution gates; safe default off. |
 | `FACEBOOK_COMMENT_EXECUTION_TIMEOUT_MS` | Max time for one execution attempt. | `90000` | No | — |

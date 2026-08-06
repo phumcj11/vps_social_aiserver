@@ -18,9 +18,23 @@ import type { FakeScenario } from './fake-adapter';
 import { idempotencyKey } from './idempotency-repository';
 import { isTerminalExecutionStatus } from './session-state';
 import { ExecutionError, ExecutionErrorCode } from './errors';
-import type { ExecutionContext, ExecutionResult } from './types';
+import type { ExecutionContext, ExecutionResult, TargetVerification } from './types';
+import type { FacebookCommentPage } from './comment-page';
+import {
+  PlaywrightFacebookCommentAdapter,
+  type ProfileLock,
+  type AdapterMode,
+} from './playwright-adapter';
+import { newId } from '../lib/tokens';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Builds the real browser page + exclusive profile lock for one attempt. */
+export type CommentPageFactory = (input: {
+  workspaceId: string;
+  targetUrl: string;
+  mode: AdapterMode;
+}) => Promise<{ page: FacebookCommentPage; lock: ProfileLock }>;
 
 export interface ExecutionCoordinatorDeps {
   sessions: ExecutionSessionRepository;
@@ -32,6 +46,28 @@ export interface ExecutionCoordinatorDeps {
   actionQueue: ActionQueue;
   env: ApiEnv;
   logger: Logger;
+  /**
+   * Optional real-browser wiring. Required only for the REAL Playwright path
+   * (submit_once) and the read-only `prepareOnly` probe. Absent in unit tests
+   * (fake adapter) and under the safe defaults (execution gates block first).
+   */
+  commentPageFactory?: CommentPageFactory;
+}
+
+/** Structured result of a strictly read-only `prepare_only` readiness probe. */
+export interface PrepareOnlyResult {
+  ok: boolean;
+  jobId: string;
+  targetUrl: string;
+  /** True when the observed post identity matches the immutable target key. */
+  targetMatches: boolean;
+  observedPostKey: string | null;
+  /** A safe reason code when a check aborted (no typing/submitting occurred). */
+  reasonCode: string | null;
+  reasonDetail: string | null;
+  /** Always false — this mode never types or submits. */
+  typed: false;
+  submitted: false;
 }
 
 export interface PrepareExecutionResult {
@@ -112,7 +148,7 @@ export class ExecutionCoordinator {
   async prepareExecution(
     workspaceId: string,
     jobId: string,
-    opts: { scenario?: FakeScenario; dryRun?: boolean } = {},
+    opts: { scenario?: FakeScenario; dryRun?: boolean; authorizeSubmit?: boolean } = {},
   ): Promise<PrepareExecutionResult> {
     this.assertWorkspace(workspaceId);
     const dryRun = opts.dryRun === true;
@@ -133,16 +169,39 @@ export class ExecutionCoordinator {
       return { status: 'blocked', session: null, job, result: null, blockedReasons: blockers };
     }
 
-    // A dry run forces the FAKE adapter; a real run honors configuration (which,
-    // for 'playwright', is the disabled boundary that refuses).
-    const adapter = dryRun
-      ? selectCommentAdapter(
-          { ...this.deps.env, FACEBOOK_COMMENT_ADAPTER: 'fake' },
-          {
-            scenario: opts.scenario,
-          },
-        )
-      : selectCommentAdapter(this.deps.env, { scenario: opts.scenario });
+    // A dry run forces the FAKE adapter. A real run honors configuration: for
+    // 'playwright' it builds the REAL, gated adapter with browser wiring +
+    // submit_once mode. A real submit additionally requires an explicit
+    // one-shot `authorizeSubmit`; without it the adapter refuses before typing.
+    let adapter;
+    if (dryRun) {
+      adapter = selectCommentAdapter(
+        { ...this.deps.env, FACEBOOK_COMMENT_ADAPTER: 'fake' },
+        { scenario: opts.scenario },
+      );
+    } else if (this.deps.env.FACEBOOK_COMMENT_ADAPTER === 'playwright') {
+      if (!this.deps.commentPageFactory) {
+        throw new ExecutionError(
+          ExecutionErrorCode.ADAPTER_DISABLED,
+          'Playwright adapter selected but no browser wiring is configured',
+        );
+      }
+      const { page, lock } = await this.deps.commentPageFactory({
+        workspaceId,
+        targetUrl: job.targetUrl,
+        mode: 'submit_once',
+      });
+      adapter = selectCommentAdapter(this.deps.env, {
+        playwright: {
+          page,
+          lock,
+          mode: 'submit_once',
+          submitAuthorized: opts.authorizeSubmit === true,
+        },
+      });
+    } else {
+      adapter = selectCommentAdapter(this.deps.env, { scenario: opts.scenario });
+    }
 
     // Precondition: only a queued job executes (a real run consumes it).
     if (!dryRun && job.status !== 'queued') {
@@ -237,6 +296,91 @@ export class ExecutionCoordinator {
     const refreshed = await this.deps.sessions.getById(session.id);
     const finalJob = (await this.deps.actionRepo.getJobById(job.id)) ?? processing;
     return { status: result.status, session: refreshed, job: finalJob, result };
+  }
+
+  /**
+   * prepare_only — a STRICTLY read-only readiness probe against the exact target
+   * post. It opens the browser, validates the connected session, verifies the
+   * post identity + comment availability, checks for a duplicate, and confirms a
+   * single composer — then closes. It NEVER types, submits, reacts, likes,
+   * messages, or joins, and it creates NO execution session, NO idempotency
+   * reservation, and NO job state change. It intentionally does NOT require the
+   * write gates (they may stay disabled) — it can never write.
+   */
+  async prepareOnly(workspaceId: string, jobId: string): Promise<PrepareOnlyResult> {
+    this.assertWorkspace(workspaceId);
+    const job = await this.loadOwnedJob(workspaceId, jobId);
+    if (job.actionType !== 'facebook_comment') {
+      throw new ExecutionError(
+        ExecutionErrorCode.UNSUPPORTED_ACTION_TYPE,
+        'Only facebook_comment actions can be probed',
+      );
+    }
+    if (!this.deps.commentPageFactory) {
+      throw new ExecutionError(
+        ExecutionErrorCode.ADAPTER_DISABLED,
+        'prepare_only requires real browser wiring',
+      );
+    }
+
+    const { page, lock } = await this.deps.commentPageFactory({
+      workspaceId,
+      targetUrl: job.targetUrl,
+      mode: 'prepare_only',
+    });
+    const adapter = new PlaywrightFacebookCommentAdapter({
+      env: this.deps.env,
+      mode: 'prepare_only',
+      submitAuthorized: false,
+      page,
+      lock,
+    });
+    const ctx: ExecutionContext = {
+      workspaceId,
+      actionJobId: job.id,
+      sessionId: newId(),
+      attemptNumber: 0,
+      targetUrl: job.targetUrl,
+      targetPostKey: job.targetPostKey,
+      approvedContent: job.approvedContent,
+      adapter: 'playwright',
+    };
+
+    let target: TargetVerification;
+    try {
+      target = await adapter.verifyTarget(ctx);
+    } finally {
+      // ALWAYS close the browser and release the lock — even on error.
+      await adapter.close();
+    }
+
+    const targetMatches = target.ok && target.observedPostKey === job.targetPostKey;
+    const { code, detail } = splitReason(target.reason);
+    const reasonCode = target.ok
+      ? targetMatches
+        ? null
+        : ExecutionErrorCode.TARGET_MISMATCH
+      : code;
+    this.deps.logger.info('execution.prepare_only', {
+      jobId: job.id,
+      ok: target.ok && targetMatches,
+      reasonCode,
+    });
+    return {
+      ok: target.ok && targetMatches,
+      jobId: job.id,
+      targetUrl: job.targetUrl,
+      targetMatches,
+      observedPostKey: target.observedPostKey,
+      reasonCode,
+      reasonDetail: target.ok
+        ? targetMatches
+          ? null
+          : 'Observed post identity does not match the target'
+        : detail,
+      typed: false,
+      submitted: false,
+    };
   }
 
   /** Apply the execution result to the Action Job + idempotency reservation. */
@@ -362,4 +506,12 @@ export class ExecutionCoordinator {
 
     return { session: updated ?? session, classification };
   }
+}
+
+/** Split an adapter reason of the form "CODE: detail" (or bare "CODE"). */
+function splitReason(reason: string | undefined): { code: string | null; detail: string | null } {
+  if (!reason) return { code: null, detail: null };
+  const i = reason.indexOf(': ');
+  if (i < 0) return { code: reason, detail: reason };
+  return { code: reason.slice(0, i), detail: reason.slice(i + 2) };
 }
