@@ -157,3 +157,5 @@ Scope is bounded by [02-product-scope.md](02-product-scope.md) and [not-doing.md
 - Read-only capability precedes any Facebook write.
 - Each sprint is independently verifiable and does not widen the MVP.
 - Everything runs within the current VPS budget; scaling is a deliberate future decision, not an MVP goal.
+
+> **SPRINT 014 — Production Pilot Readiness (2026-08-20):** SMALL human-supervised production pilot prepared behind Write Window + one-shot authorization + Level-1 limits; no production writes enabled. See [92](92-production-pilot-level1.md), [99](99-production-rollout-levels.md), [sprints/SPRINT-014](sprints/SPRINT-014-production-pilot-readiness.md).

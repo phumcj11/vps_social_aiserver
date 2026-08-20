@@ -4,6 +4,8 @@ How to exercise the Safe Execution Foundation **without any real Facebook write*
 
 > **The first REAL write** is a separate, manual, operator-supervised procedure — see [81-controlled-facebook-write-test.md](81-controlled-facebook-write-test.md) and [ADR-030](adr/ADR-030-controlled-write-test-procedure.md). Incident lockdown ([80-incident-lockdown.md](80-incident-lockdown.md)) can force all execution off instantly.
 
+> **Production pilot (SPRINT 014):** a SMALL, human-supervised production pilot is prepared but NOT enabled. Every production submit additionally requires an OPEN bounded **Write Window** ([94](94-production-write-window.md)) AND a valid **one-shot authorization** ([95](95-production-submit-authorization.md)), inside Level-1 hard limits ([96](96-production-pilot-limits.md)). Operator procedures: [98 production pilot runbook](98-production-pilot-runbook.md).
+
 ## Safety posture
 
 Real execution requires ALL of these, and this sprint keeps them in their safe state:

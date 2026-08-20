@@ -2,6 +2,12 @@
 
 ## Current Sprint
 
+**SPRINT 014 — Production Pilot Readiness & Controlled Rollout** (branch `feature/s014-production-pilot-readiness`).
+
+> **Status:** Pilot 0 is **closed — PASS** (release `v0.9.3-pilot-write-verified`, main `b7d088f`): the full pipeline posted exactly one real comment in the operator-owned private test group and recovered to succeeded/verified with zero duplicates. Sprint 014 prepares a SMALL, human-supervised production pilot — **no production writes are enabled**. Delivered: Pilot 0 closure record ([91](91-pilot0-closure.md)); production safety primitives (`apps/api/src/production/` — Business readiness, group selection, bounded Write Window, one-shot submit authorization, hard limits, observability read model — pure + tested, 44 cases); Level-1 definition, rollout levels + exit criteria, 16 operator runbooks, and a read-only Operations UI section. No Facebook write, no flag enablement, no external AI, no Execute-Now surface. Detail: [SPRINT-014](sprints/SPRINT-014-production-pilot-readiness.md), [92](92-production-pilot-level1.md)–[99](99-production-rollout-levels.md), [ADR-033](adr/ADR-033-production-write-window.md)/[034](adr/ADR-034-one-shot-production-authorization.md)/[035](adr/ADR-035-production-pilot-limits.md).
+
+### Previously
+
 **SPRINT 013 — Operational Hardening and Controlled Write Test Preparation** (merged) → **PILOT 0 — Phase 3 corrective fixes** (branch `feature/pilot0-classifier-dedup-fix`, not committed)
 
 > **Pilot 0 status:** Read-only Collector validation ran over six real pilot groups (PARTIAL_PASS). Two blockers found and fixed: (1) the Opportunity Classifier accepted advertiser posts and rejected genuine customer-intent posts — corrected to intent-driven **`rules-v2`** with a safe `opportunity:reclassify` path; (2) duplicate posts surfaced as `REPOSITORY_ERROR` — the Collector now skips duplicates idempotently and reports `duplicatesSkipped` (migration `0011`). Verified end-to-end on the Pilot data: 2 accept / 7 reject after reclassification, **1 correct MATCH** (0 wrong-area), **1 Mock draft**; Cha-am retest completes with no `REPOSITORY_ERROR`. No Facebook write, no external AI. Detail: [sprints/PILOT-000-phase3-corrective-fixes.md](sprints/PILOT-000-phase3-corrective-fixes.md), [85](85-pilot0-classifier-correction.md), [86](86-collector-duplicate-handling.md).

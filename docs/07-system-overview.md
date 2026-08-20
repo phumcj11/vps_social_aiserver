@@ -153,3 +153,5 @@ The single-VPS budget shapes the architecture directly:
 - **Headroom for the operator.** The design leaves memory for the OS and operator tools, since the host has little to spare.
 
 This keeps the MVP well within the current VPS while preserving every safety and auditability guarantee. If pilot demand later exceeds one host, scaling is a deliberate future decision recorded as an ADR — not an MVP concern.
+
+> **SPRINT 014 — Production Pilot Readiness (2026-08-20):** SMALL human-supervised production pilot prepared behind Write Window + one-shot authorization + Level-1 limits; no production writes enabled. See [92](92-production-pilot-level1.md), [99](99-production-rollout-levels.md), [sprints/SPRINT-014](sprints/SPRINT-014-production-pilot-readiness.md).

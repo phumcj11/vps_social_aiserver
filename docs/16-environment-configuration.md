@@ -92,6 +92,9 @@ The execution foundation is exercised only through the deterministic **fake** ad
 | Variable | Purpose | Safe default | Secret? | Security notes |
 | -------- | ------- | ------------ | ------- | -------------- |
 | `FACEBOOK_COMMENT_ADAPTER` | Selects the comment adapter. | `fake` | No | `fake` is the safe default. `playwright` selects the **real gated adapter** ([87](87-real-facebook-comment-adapter.md)); it still refuses to type/submit unless every enablement flag is set **and** the executor grants an explicit one-shot `submit_once` authorization. Doctor asserts `fake` as the safe posture. |
+| `PILOT_DRAFT_MODE` | Production draft provider mode (SPRINT 014). | `mock` | No | `mock`/`manual` require a mandatory human rewrite; `external_ai` is refused (not configured). Enables no write. [92](92-production-pilot-level1.md) |
+| `PILOT_MAX_GROUPS` / `PILOT_MAX_COMMENTS_PER_DAY` / `PILOT_MAX_COMMENTS_PER_GROUP_PER_DAY` / `PILOT_MAX_COMMENTS_PER_BUSINESS_PER_DAY` / `PILOT_MAX_AMBIGUOUS_PER_DAY` | Level-1 pilot hard limits. | `3` / `3` / `1` / `1` / `1` | No | Enforced by the pilot limit evaluator; advisory, never trigger an action. [96](96-production-pilot-limits.md) |
+| `PILOT_WRITE_WINDOW_MAX_SECONDS` / `PILOT_AUTHORIZATION_TTL_SECONDS` | Max bounded write-window length / one-shot authorization TTL. | `300` / `300` | No | Window auto-closes at expiry (never auto-retries); authorization is single-use. [94](94-production-write-window.md), [95](95-production-submit-authorization.md) |
 | `FACEBOOK_WRITE_ACTION_ENABLED` | Enables Facebook write actions. | `false` | No | One of the five execution gates; safe default off. |
 | `FACEBOOK_COMMENT_ENABLED` | Enables the comment action specifically. | `false` | No | One of the five execution gates; safe default off. |
 | `FACEBOOK_COMMENT_EXECUTION_TIMEOUT_MS` | Max time for one execution attempt. | `90000` | No | — |

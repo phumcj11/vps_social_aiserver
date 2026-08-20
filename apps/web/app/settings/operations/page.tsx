@@ -180,7 +180,7 @@ export default function OperationsPage() {
         </p>
       </section>
 
-      <section>
+      <section style={{ marginBottom: '1.25rem' }}>
         <h2>Last incident</h2>
         {s.lastIncident ? (
           <p>
@@ -190,6 +190,48 @@ export default function OperationsPage() {
         ) : (
           <p>No incidents recorded.</p>
         )}
+      </section>
+
+      <section>
+        <h2>Production Pilot (Level 1)</h2>
+        <p style={{ color: '#5c4500' }}>
+          Supervised production pilot — <strong>preparation only</strong>. Every draft is
+          human-reviewed; every submit is explicitly authorized and preceded by prepare_only. There
+          is <strong>no Execute-Now control</strong> here.
+        </p>
+        <ul>
+          <li>
+            Pilot level: <strong>LEVEL 1 — Supervised Production (readiness)</strong>
+          </li>
+          <li>
+            Production writes:{' '}
+            <strong style={{ color: levelColor(s.safety.facebookWriteEnabled) }}>
+              {s.safety.facebookWriteEnabled ? 'ENABLED' : 'disabled'}
+            </strong>{' '}
+            · Kill switch:{' '}
+            <strong style={{ color: levelColor(!s.safety.killSwitchOn) }}>
+              {s.safety.killSwitchOn ? 'ON' : 'off'}
+            </strong>{' '}
+            · Adapter: {s.safety.adapter}
+          </li>
+          <li>
+            Write window: <strong>CLOSED</strong> (default; opens only via the operator checklist)
+          </li>
+          <li>
+            Daily limits: max 3 groups · 3 comments/day · 1/group · 1/business · 1 ambiguous → stop
+            for the day
+          </li>
+          <li>Draft mode: mock/manual require a human rewrite; external_ai is not configured</li>
+          <li>
+            Production Business: NOT_READY until real Business data is supplied (test Businesses are
+            never used)
+          </li>
+        </ul>
+        <p style={{ fontSize: '0.85rem', color: '#666' }}>
+          Live pilot counters (Signals, Opportunities, Reviews, Action Jobs, verified comments,
+          write-window expiry, last verified backup) come from the Production Pilot observability
+          read model. No cookies, credentials, or profile paths are ever shown.
+        </p>
       </section>
     </main>
   );

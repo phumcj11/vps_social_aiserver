@@ -95,3 +95,5 @@ Each principle is explained in [project-principles.md](project-principles.md).
 | [rfcs/](rfcs/)                                 | Requests for Comments — proposals under discussion.           |
 | [sprints/](sprints/)                           | Per-sprint planning and retrospective records.                |
 | [tasks/](tasks/)                               | Individual task specifications.                                |
+
+> **SPRINT 014 — Production Pilot Readiness (2026-08-20):** SMALL human-supervised production pilot prepared behind Write Window + one-shot authorization + Level-1 limits; no production writes enabled. See [92](92-production-pilot-level1.md), [99](99-production-rollout-levels.md), [sprints/SPRINT-014](sprints/SPRINT-014-production-pilot-readiness.md).

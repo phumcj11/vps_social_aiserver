@@ -165,3 +165,5 @@ See [73-backup-policy.md](73-backup-policy.md)–[84-audit-investigation.md](84-
   - Source-of-truth facts (stack, structure, sprint) → [13-product-memory.md](13-product-memory.md).
 - At sprint boundaries, update [current-sprint.md](current-sprint.md) and add a sprint record under `docs/sprints/`.
 - No placeholders, no TODO markers, and no fake completeness claims in documentation.
+
+> **SPRINT 014 — Production Pilot Readiness (2026-08-20):** SMALL human-supervised production pilot prepared behind Write Window + one-shot authorization + Level-1 limits; no production writes enabled. See [92](92-production-pilot-level1.md), [99](99-production-rollout-levels.md), [sprints/SPRINT-014](sprints/SPRINT-014-production-pilot-readiness.md).

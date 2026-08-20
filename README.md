@@ -69,3 +69,5 @@ Documentation is the single source of truth for this project and lives under [do
 ## Scope Note
 
 This repository currently contains **documentation and structure only**. No application, service, database, or container code is present, and none is intended during SPRINT -1. What the MVP will and will not include is defined in [docs/not-doing.md](docs/not-doing.md).
+
+> **SPRINT 014 — Production Pilot Readiness (2026-08-20):** a SMALL, human-supervised production pilot is prepared behind full gates (bounded Write Window, one-shot submit authorization, Level-1 hard limits) — **no production writes enabled**. See [docs/92 Production Pilot Level 1](docs/92-production-pilot-level1.md), [docs/99 rollout levels](docs/99-production-rollout-levels.md), [docs/sprints/SPRINT-014](docs/sprints/SPRINT-014-production-pilot-readiness.md).

@@ -137,6 +137,24 @@ export const apiEnvSchema = z.object({
   ACTION_EVIDENCE_RETENTION_DAYS: intFromString(30),
   ACTION_AMBIGUOUS_AUTO_RETRY: booleanish(false),
 
+  // ── Production Pilot Readiness (SPRINT 014) ────────────────────────────────
+  // Configuration for a SMALL, human-supervised production pilot. NONE of these
+  // enable a Facebook write — the write path stays gated by the flags above.
+  // Draft provider mode for production candidates: 'mock' and 'manual' both
+  // require a human rewrite/review; 'external_ai' is NOT configured this sprint.
+  PILOT_DRAFT_MODE: z.enum(['mock', 'manual', 'external_ai']).default('mock'),
+  // Level-1 hard limits (advisory defaults enforced by the pilot limit evaluator).
+  PILOT_MAX_GROUPS: intFromString(3),
+  PILOT_MAX_COMMENTS_PER_DAY: intFromString(3),
+  PILOT_MAX_COMMENTS_PER_GROUP_PER_DAY: intFromString(1),
+  PILOT_MAX_COMMENTS_PER_BUSINESS_PER_DAY: intFromString(1),
+  PILOT_MAX_AMBIGUOUS_PER_DAY: intFromString(1),
+  // Maximum bounded Write Window length for Level 1 (seconds). A window auto-
+  // closes at expiry; expiry NEVER auto-retries or submits anything.
+  PILOT_WRITE_WINDOW_MAX_SECONDS: intFromString(300),
+  // One-shot production submit authorization lifetime (seconds).
+  PILOT_AUTHORIZATION_TTL_SECONDS: intFromString(300),
+
   // Per-route rate limits for the write/expensive endpoints (SPRINT 012). Each
   // is a max-per-window guard on top of auth; windows are in seconds.
   ACTION_CREATE_RATE_LIMIT_MAX: intFromString(30),
