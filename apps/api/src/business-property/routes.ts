@@ -460,7 +460,11 @@ export function registerBusinessPropertyRoutes(
       policies,
       activeProductionPropertyCount: activeProps,
     };
-    return { readiness: evaluateBusinessReadiness(snapshot) };
+    return {
+      readiness: evaluateBusinessReadiness(snapshot),
+      environment: environment ?? 'test',
+      activePropertyCount: activeProps,
+    };
   });
   app.get(
     '/businesses/:id/properties/:pid/readiness',
@@ -483,6 +487,26 @@ export function registerBusinessPropertyRoutes(
       return { readiness: evaluatePropertyReadiness(p, effective), effectivePolicies: effective };
     },
   );
+
+  // ── Audit / History (SPRINT 016) ─────────────────────────────────────────────
+  app.get('/businesses/:id/audit', { preHandler: authenticate }, async (req, reply) => {
+    noStore(reply);
+    const { id } = req.params as { id: string };
+    await loadOwnedBusiness(req, id);
+    const events = await bpStore.listAuditByBusiness(id, 200);
+    // Safe projection — payloads hold only labels/flags (no secrets by construction).
+    return {
+      events: events.map((e) => ({
+        id: e.id,
+        businessId: e.businessId,
+        propertyId: e.propertyId,
+        eventType: e.eventType,
+        actorEmail: e.actorEmail,
+        payload: e.payload,
+        createdAt: e.createdAt.toISOString(),
+      })),
+    };
+  });
 
   logger.info('business_property.routes_registered', {});
 }

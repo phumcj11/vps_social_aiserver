@@ -29,9 +29,11 @@ export function Nav({ email }: { email?: string }) {
         paddingBottom: '1rem',
         marginBottom: '1.5rem',
         borderBottom: '1px solid #ddd',
+        flexWrap: 'wrap',
       }}
     >
       <a href="/dashboard">Dashboard</a>
+      <a href="/settings/businesses">ธุรกิจของฉัน</a>
       <a href="/businesses">Businesses</a>
       <a href="/settings/facebook">Facebook</a>
       <a href="/settings/facebook/groups">Groups</a>

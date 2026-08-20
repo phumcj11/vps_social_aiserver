@@ -277,4 +277,78 @@ describe('policies + readiness + environment + audit', () => {
     expect(res.json().effectivePolicies.inheritedFields).toContain('bookingPolicy');
     await app.close();
   });
+
+  it('readiness endpoint exposes environment and activePropertyCount for the frontend', async () => {
+    const { app } = await makeTestApp();
+    const { token, businessId } = await withBusiness(app, 'envcount@example.com');
+
+    let res = await app.inject({
+      method: 'GET',
+      url: `/businesses/${businessId}/readiness`,
+      headers: cookieHeader(token),
+    });
+    expect(res.json().environment).toBe('test');
+    expect(res.json().activePropertyCount).toBe(0);
+
+    const created = await app.inject({
+      method: 'POST',
+      url: `/businesses/${businessId}/properties`,
+      ...h(token, { name: 'Villa A' }),
+    });
+    // A freshly created property is active by default.
+    await app.inject({
+      method: 'PATCH',
+      url: `/businesses/${businessId}/properties/${created.json().property.id}`,
+      ...h(token, { status: 'active' }),
+    });
+    await app.inject({
+      method: 'PATCH',
+      url: `/businesses/${businessId}/environment`,
+      ...h(token, { environment: 'production' }),
+    });
+
+    res = await app.inject({
+      method: 'GET',
+      url: `/businesses/${businessId}/readiness`,
+      headers: cookieHeader(token),
+    });
+    expect(res.json().environment).toBe('production');
+    expect(res.json().activePropertyCount).toBeGreaterThanOrEqual(1);
+    await app.close();
+  });
+
+  it('GET /businesses/:id/audit returns a safe projection and enforces ownership', async () => {
+    const { app } = await makeTestApp();
+    const { token, businessId } = await withBusiness(app, 'auditowner@example.com');
+    await app.inject({
+      method: 'POST',
+      url: `/businesses/${businessId}/properties`,
+      ...h(token, { name: 'Audited Villa' }),
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/businesses/${businessId}/audit`,
+      headers: cookieHeader(token),
+    });
+    expect(res.statusCode).toBe(200);
+    const events = res.json().events;
+    expect(Array.isArray(events)).toBe(true);
+    expect(events.map((e: { eventType: string }) => e.eventType)).toContain('PropertyCreated');
+    // Safe projection shape (ISO timestamps, no internal ORM fields).
+    const first = events[0];
+    expect(typeof first.id).toBe('string');
+    expect(typeof first.createdAt).toBe('string');
+    expect(first.createdAt).toBe(new Date(first.createdAt).toISOString());
+
+    // A different workspace owner cannot read this business's audit (404).
+    const other = await withBusiness(app, 'auditother@example.com');
+    const denied = await app.inject({
+      method: 'GET',
+      url: `/businesses/${businessId}/audit`,
+      headers: cookieHeader(other.token),
+    });
+    expect(denied.statusCode).toBe(404);
+    await app.close();
+  });
 });

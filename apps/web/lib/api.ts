@@ -89,6 +89,129 @@ export const RULE_TYPES = [
 ] as const;
 export type RuleType = (typeof RULE_TYPES)[number];
 
+// ── SPRINT 015/016 — Business + Property production data ──────────────────────
+export type Environment = 'test' | 'production';
+export type EntityStatus = 'active' | 'inactive' | 'archived';
+export type ContactChannelType =
+  'PHONE' | 'LINE_ID' | 'LINE_OA' | 'FACEBOOK_PAGE' | 'WEBSITE' | 'EMAIL' | 'OTHER';
+
+export interface ContactChannel {
+  id: string;
+  businessId: string;
+  type: ContactChannelType;
+  value: string;
+  label: string | null;
+  enabled: boolean;
+  approvedForDrafts: boolean;
+  approvedForPublicResponse: boolean;
+  ownerVerifiedAt: string | null;
+}
+
+export type AvailabilityPolicy =
+  'MANUAL_CONFIRMATION' | 'OWNER_SYSTEM' | 'EXTERNAL_CALENDAR' | 'DO_NOT_MENTION';
+export type PricingPolicy =
+  'DO_NOT_MENTION' | 'STARTING_FROM' | 'FIXED_REFERENCE' | 'MANUAL_CONFIRMATION';
+export type PromotionPolicy = 'NONE' | 'APPROVED_ONLY' | 'MANUAL_CONFIRMATION';
+export type BookingPolicy = 'CONTACT_ONLY' | 'LINE' | 'PHONE' | 'WEBSITE' | 'MANUAL';
+
+export interface BusinessPolicies {
+  availabilityPolicy: AvailabilityPolicy;
+  pricingPolicy: PricingPolicy;
+  promotionPolicy: PromotionPolicy;
+  bookingPolicy: BookingPolicy;
+  cancellationInfoPolicy: string | null;
+  prohibitedClaims: string[];
+  escalationPolicy: string | null;
+  responsibleOwner: string | null;
+  operatingHours: string | null;
+  responseSlaMinutes: number | null;
+}
+
+export interface PropertyPolicyOverrides {
+  availabilityPolicy: AvailabilityPolicy | null;
+  pricingPolicy: PricingPolicy | null;
+  promotionPolicy: PromotionPolicy | null;
+  bookingPolicy: BookingPolicy | null;
+  prohibitedClaims: string[] | null;
+}
+
+export interface Property {
+  id: string;
+  businessId: string;
+  name: string;
+  code: string | null;
+  propertyType: string | null;
+  status: EntityStatus;
+  description: string | null;
+  location: {
+    province: string | null;
+    district: string | null;
+    subdistrict: string | null;
+    area: string | null;
+    address: string | null;
+    latitude: number | null;
+    longitude: number | null;
+  };
+  capacity: {
+    bedrooms: number | null;
+    bathrooms: number | null;
+    beds: number | null;
+    maxGuests: number | null;
+    extraGuestPolicy: string | null;
+  };
+  amenities: Record<string, boolean | string[]>;
+  pricing: {
+    startingPrice: number | null;
+    priceDisplayMode: string;
+    weekdayPrice: number | null;
+    weekendPrice: number | null;
+    holidayPolicy: string | null;
+    securityDeposit: number | null;
+    extraGuestPrice: number | null;
+  };
+  content: {
+    sellingPoints: string[];
+    importantNotes: string | null;
+    prohibitedClaims: string[];
+    responseNotes: string | null;
+  };
+  media: {
+    coverImage: string | null;
+    gallery: string[];
+    videoUrl: string | null;
+    mapUrl: string | null;
+  };
+  policyOverrides: PropertyPolicyOverrides;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReadinessVerdict {
+  ready: boolean;
+  status: 'READY' | 'NOT_READY';
+  missing: string[];
+}
+
+export interface EffectivePolicies {
+  availabilityPolicy: AvailabilityPolicy;
+  pricingPolicy: PricingPolicy;
+  promotionPolicy: PromotionPolicy;
+  bookingPolicy: BookingPolicy;
+  prohibitedClaims: string[];
+  inheritedFields: string[];
+  overriddenFields: string[];
+}
+
+export interface BusinessAuditEvent {
+  id: string;
+  businessId: string | null;
+  propertyId: string | null;
+  eventType: string;
+  actorEmail: string | null;
+  payload: Record<string, unknown> | null;
+  createdAt: string;
+}
+
 export interface FacebookStatus {
   connected: boolean;
   status: 'active' | 'disconnected' | 'blocked' | 'none';
@@ -549,6 +672,74 @@ export const api = {
     request<{ groups: FacebookGroup[] }>(`/businesses/${businessId}/facebook-groups`, {
       method: 'GET',
     }),
+
+  // ── SPRINT 016 — Business + Property production data ────────────────────────
+  setBusinessEnvironment: (id: string, environment: Environment) =>
+    request<{ environment: Environment }>(`/businesses/${id}/environment`, {
+      method: 'PATCH',
+      body: JSON.stringify({ environment }),
+    }),
+  getBusinessPolicies: (id: string) =>
+    request<{ policies: BusinessPolicies | null }>(`/businesses/${id}/policies`, { method: 'GET' }),
+  putBusinessPolicies: (id: string, policies: BusinessPolicies) =>
+    request<{ policies: BusinessPolicies }>(`/businesses/${id}/policies`, {
+      method: 'PUT',
+      body: JSON.stringify(policies),
+    }),
+  listContacts: (id: string) =>
+    request<{ contacts: ContactChannel[] }>(`/businesses/${id}/contacts`, { method: 'GET' }),
+  createContact: (id: string, input: { type: ContactChannelType; value: string; label?: string }) =>
+    request<{ contact: ContactChannel }>(`/businesses/${id}/contacts`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  updateContact: (
+    id: string,
+    cid: string,
+    patch: Partial<ContactChannel> & { ownerVerified?: boolean },
+  ) =>
+    request<{ contact: ContactChannel }>(`/businesses/${id}/contacts/${cid}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
+  listProperties: (id: string) =>
+    request<{ properties: Property[] }>(`/businesses/${id}/properties`, { method: 'GET' }),
+  createProperty: (
+    id: string,
+    input: { name: string; code?: string; propertyType?: string; description?: string },
+  ) =>
+    request<{ property: Property }>(`/businesses/${id}/properties`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  getProperty: (id: string, pid: string) =>
+    request<{ property: Property }>(`/businesses/${id}/properties/${pid}`, { method: 'GET' }),
+  updateProperty: (id: string, pid: string, patch: Record<string, unknown>) =>
+    request<{ property: Property }>(`/businesses/${id}/properties/${pid}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
+  archiveProperty: (id: string, pid: string) =>
+    request<{ property: Property }>(`/businesses/${id}/properties/${pid}/archive`, {
+      method: 'POST',
+    }),
+  putPropertyPolicies: (id: string, pid: string, overrides: PropertyPolicyOverrides) =>
+    request<{ property: Property }>(`/businesses/${id}/properties/${pid}/policies`, {
+      method: 'PUT',
+      body: JSON.stringify(overrides),
+    }),
+  getBusinessReadiness: (id: string) =>
+    request<{ readiness: ReadinessVerdict; environment: Environment; activePropertyCount: number }>(
+      `/businesses/${id}/readiness`,
+      { method: 'GET' },
+    ),
+  getPropertyReadiness: (id: string, pid: string) =>
+    request<{ readiness: ReadinessVerdict; effectivePolicies?: EffectivePolicies }>(
+      `/businesses/${id}/properties/${pid}/readiness`,
+      { method: 'GET' },
+    ),
+  listBusinessAudit: (id: string) =>
+    request<{ events: BusinessAuditEvent[] }>(`/businesses/${id}/audit`, { method: 'GET' }),
 
   // ── Collector ──────────────────────────────────────────────────────────────
   getCollectorStatus: () => request<CollectorStatus>('/collector/status', { method: 'GET' }),
