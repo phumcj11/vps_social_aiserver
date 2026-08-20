@@ -233,6 +233,34 @@ export default function OperationsPage() {
           read model. No cookies, credentials, or profile paths are ever shown.
         </p>
       </section>
+
+      <section>
+        <h2>Production Businesses &amp; Properties</h2>
+        <p style={{ color: '#5c4500' }}>
+          Self-service Business + Property management is available via the workspace API (Businesses
+          → Properties → Profiles → Contacts → Policies → Readiness). A production Business is{' '}
+          <strong>NOT_READY</strong> until real data is supplied and at least one active Property
+          exists — test Businesses are never used for production comments.
+        </p>
+        <ul>
+          <li>
+            Environment: a Business is <strong>test</strong> by default; only{' '}
+            <strong>production</strong> can be READY
+          </li>
+          <li>
+            Readiness (Business + Property) is computed from persisted data, with detailed missing
+            requirements
+          </li>
+          <li>
+            Prices/availability are used only when explicitly entered and the policy permits — never
+            invented
+          </li>
+        </ul>
+        <p style={{ fontSize: '0.85rem', color: '#666' }}>
+          The mobile-first management screens and onboarding wizard ship in Sprint 016; the backend,
+          persistence, readiness gates, and audit are in place now.
+        </p>
+      </section>
     </main>
   );
 }

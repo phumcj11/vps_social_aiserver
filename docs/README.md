@@ -97,3 +97,5 @@ Each principle is explained in [project-principles.md](project-principles.md).
 | [tasks/](tasks/)                               | Individual task specifications.                                |
 
 > **SPRINT 014 — Production Pilot Readiness (2026-08-20):** SMALL human-supervised production pilot prepared behind Write Window + one-shot authorization + Level-1 limits; no production writes enabled. See [92](92-production-pilot-level1.md), [99](99-production-rollout-levels.md), [sprints/SPRINT-014](sprints/SPRINT-014-production-pilot-readiness.md).
+
+> **SPRINT 015 — Production Business & Property (2026-08-20):** Business and Property are distinct persisted entities; structured contacts/policies with inheritance; persisted Business+Property readiness; deterministic Property matcher (backend + tests; UI + full matching pipeline → Sprint 016). See [100](100-production-business-model.md), [101](101-property-accommodation-model.md), [sprints/SPRINT-015](sprints/SPRINT-015-production-business-property-management.md).

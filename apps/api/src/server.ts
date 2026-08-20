@@ -9,6 +9,9 @@ import { AppError } from './lib/errors';
 import { registerAuthRoutes } from './auth/routes';
 import { registerWorkspaceRoutes } from './workspaces/routes';
 import { registerBusinessRoutes } from './businesses/routes';
+import { registerBusinessPropertyRoutes } from './business-property/routes';
+import { InMemoryBusinessPropertyStore } from './business-property/memory-store';
+import type { BusinessPropertyStore } from './business-property/store';
 import { registerFacebookRoutes } from './facebook/routes';
 import { registerGroupRoutes } from './facebook/group-routes';
 import { ProfileService } from './facebook/profile';
@@ -56,6 +59,8 @@ export interface ServerDeps {
   store: Store;
   env: ApiEnv;
   logger?: Logger;
+  /** Business+Property persistence (SPRINT 015). Defaults to in-memory when absent. */
+  bpStore?: BusinessPropertyStore;
   /** Optional async DB health probe; when absent, /health/db reports "unknown". */
   dbHealth?: () => Promise<boolean>;
   /** Injectable browser driver (tests provide a fake; runtime uses Playwright). */
@@ -258,6 +263,12 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   registerAuthRoutes(app, { store, env, logger, audit });
   registerWorkspaceRoutes(app, { store, env, logger, audit });
   registerBusinessRoutes(app, { store, env, logger });
+  registerBusinessPropertyRoutes(app, {
+    store,
+    bpStore: deps.bpStore ?? new InMemoryBusinessPropertyStore(),
+    env,
+    logger,
+  });
   registerFacebookRoutes(app, { store, env, facebook });
   registerGroupRoutes(app, { store, env, groupValidation, audit });
   registerCollectorRoutes(app, { store, env, collector });

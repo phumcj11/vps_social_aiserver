@@ -6,6 +6,7 @@ import { buildServer } from '../server';
 import { loadApiEnv } from '../lib/env';
 import { createLogger } from '../lib/logger';
 import { InMemoryStore } from '../store/memory';
+import { InMemoryBusinessPropertyStore } from '../business-property/memory-store';
 import type { BrowserDriver } from '../facebook/driver';
 import type { CollectorBrowser } from '../collector/browser';
 
@@ -22,10 +23,14 @@ export interface TestAppOptions {
 }
 
 /** Build an isolated test app backed by an in-memory store (no MySQL). */
-export async function makeTestApp(
-  opts: TestAppOptions = {},
-): Promise<{ app: FastifyInstance; store: InMemoryStore; profileRoot: string }> {
+export async function makeTestApp(opts: TestAppOptions = {}): Promise<{
+  app: FastifyInstance;
+  store: InMemoryStore;
+  bpStore: InMemoryBusinessPropertyStore;
+  profileRoot: string;
+}> {
   const store = new InMemoryStore();
+  const bpStore = new InMemoryBusinessPropertyStore();
   const profileRoot = opts.profileRoot ?? mkdtempSync(join(tmpdir(), 'kmkt-profiles-'));
   // Each test app gets an isolated operational-state file so maintenance/lockdown
   // toggles never leak between tests or touch the repo's storage/ directory.
@@ -50,13 +55,14 @@ export async function makeTestApp(
   });
   const app = await buildServer({
     store,
+    bpStore,
     env,
     logger: createLogger('error'),
     facebookDriver: opts.facebookDriver,
     collectorBrowser: opts.collectorBrowser,
     dbHealth: opts.dbHealth,
   });
-  return { app, store, profileRoot };
+  return { app, store, bpStore, profileRoot };
 }
 
 const COOKIE_NAME = 'kmkt_session';

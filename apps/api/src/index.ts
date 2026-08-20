@@ -3,6 +3,7 @@ import { loadApiEnv } from './lib/env';
 import { createLogger } from './lib/logger';
 import { createDb, checkDbHealth } from './db/client';
 import { DrizzleStore } from './store/drizzle-store';
+import { DrizzleBusinessPropertyStore } from './business-property/drizzle-store';
 
 /**
  * Entry point for the API process.
@@ -17,9 +18,11 @@ async function main(): Promise<void> {
 
   const { db } = createDb(env.DATABASE_URL);
   const store = new DrizzleStore(db);
+  const bpStore = new DrizzleBusinessPropertyStore(db);
 
   const app = await buildServer({
     store,
+    bpStore,
     env,
     logger,
     dbHealth: () => checkDbHealth(db),

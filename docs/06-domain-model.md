@@ -262,3 +262,5 @@ The core of the model is the **Business**. **Facebook** appears only through the
 6. Every successful comment has screenshot evidence.
 7. Every meaningful action is an append-only audit event.
 8. The kill switch can stop all new write actions and cannot be bypassed.
+
+> **SPRINT 015 — Production Business & Property (2026-08-20):** Business and Property are distinct persisted entities; structured contacts/policies with inheritance; persisted Business+Property readiness; deterministic Property matcher (backend + tests; UI + full matching pipeline → Sprint 016). See [100](100-production-business-model.md), [101](101-property-accommodation-model.md), [sprints/SPRINT-015](sprints/SPRINT-015-production-business-property-management.md).

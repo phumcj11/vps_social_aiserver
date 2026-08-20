@@ -111,6 +111,9 @@ export const businesses = mysqlTable(
     name: varchar('name', { length: 120 }).notNull(),
     slug: varchar('slug', { length: 140 }).notNull(),
     status: varchar('status', { length: 20 }).notNull().default('active'),
+    // SPRINT 015 — a Business is 'test' by default; only a 'production' Business
+    // can ever satisfy Production readiness. Additive, never destructive.
+    environment: varchar('environment', { length: 20 }).notNull().default('test'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow().onUpdateNow(),
   },
@@ -974,3 +977,145 @@ export const actionEvents = mysqlTable(
 
 export type ActionJobRow = typeof actionJobs.$inferSelect;
 export type ActionEventRow = typeof actionEvents.$inferSelect;
+
+// ── SPRINT 015 — Production Business & Property ──────────────────────────────
+
+export const properties = mysqlTable(
+  'properties',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    workspaceId: varchar('workspace_id', { length: 36 })
+      .notNull()
+      .references(() => workspaces.id),
+    businessId: varchar('business_id', { length: 36 })
+      .notNull()
+      .references(() => businesses.id),
+    name: varchar('name', { length: 200 }).notNull(),
+    code: varchar('code', { length: 80 }),
+    propertyType: varchar('property_type', { length: 80 }),
+    status: varchar('status', { length: 20 }).notNull().default('active'),
+    description: text('description'),
+    // Normalized high-value / queryable fields (matching + filters).
+    province: varchar('province', { length: 120 }),
+    district: varchar('district', { length: 120 }),
+    area: varchar('area', { length: 120 }),
+    maxGuests: int('max_guests'),
+    bedrooms: int('bedrooms'),
+    bathrooms: int('bathrooms'),
+    beds: int('beds'),
+    privatePool: boolean('private_pool').notNull().default(false),
+    nearBeach: boolean('near_beach').notNull().default(false),
+    beachfront: boolean('beachfront').notNull().default(false),
+    riverfront: boolean('riverfront').notNull().default(false),
+    // JSON-encoded variable attributes (amenities, pricing, content, media,
+    // characteristics, location extras, availability, booking) — (de)serialized
+    // in the store layer. Prices live here and are stored ONLY when entered.
+    details: text('details'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => ({
+    workspaceIdx: index('properties_workspace_idx').on(table.workspaceId),
+    businessIdx: index('properties_business_idx').on(table.businessId),
+    statusIdx: index('properties_status_idx').on(table.status),
+    areaIdx: index('properties_area_idx').on(table.area),
+    typeIdx: index('properties_type_idx').on(table.propertyType),
+  }),
+);
+
+export const propertyPolicies = mysqlTable(
+  'property_policies',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    propertyId: varchar('property_id', { length: 36 })
+      .notNull()
+      .references(() => properties.id),
+    // NULL = inherit the Business policy for that field.
+    availabilityPolicy: varchar('availability_policy', { length: 40 }),
+    pricingPolicy: varchar('pricing_policy', { length: 40 }),
+    promotionPolicy: varchar('promotion_policy', { length: 40 }),
+    bookingPolicy: varchar('booking_policy', { length: 40 }),
+    prohibitedClaims: text('prohibited_claims'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => ({
+    propertyUnique: uniqueIndex('property_policies_property_unique').on(table.propertyId),
+  }),
+);
+
+export const businessContacts = mysqlTable(
+  'business_contacts',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    workspaceId: varchar('workspace_id', { length: 36 })
+      .notNull()
+      .references(() => workspaces.id),
+    businessId: varchar('business_id', { length: 36 })
+      .notNull()
+      .references(() => businesses.id),
+    type: varchar('type', { length: 20 }).notNull(),
+    value: varchar('value', { length: 255 }).notNull(),
+    label: varchar('label', { length: 120 }),
+    enabled: boolean('enabled').notNull().default(true),
+    approvedForDrafts: boolean('approved_for_drafts').notNull().default(false),
+    approvedForPublicResponse: boolean('approved_for_public_response').notNull().default(false),
+    ownerVerifiedAt: datetime('owner_verified_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => ({
+    businessIdx: index('business_contacts_business_idx').on(table.businessId),
+  }),
+);
+
+export const businessPolicies = mysqlTable(
+  'business_policies',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    businessId: varchar('business_id', { length: 36 })
+      .notNull()
+      .references(() => businesses.id),
+    availabilityPolicy: varchar('availability_policy', { length: 40 }),
+    pricingPolicy: varchar('pricing_policy', { length: 40 }),
+    promotionPolicy: varchar('promotion_policy', { length: 40 }),
+    bookingPolicy: varchar('booking_policy', { length: 40 }),
+    cancellationInfoPolicy: text('cancellation_info_policy'),
+    prohibitedClaims: text('prohibited_claims'),
+    escalationPolicy: text('escalation_policy'),
+    responsibleOwner: varchar('responsible_owner', { length: 200 }),
+    operatingHours: varchar('operating_hours', { length: 200 }),
+    responseSlaMinutes: int('response_sla_minutes'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => ({
+    businessUnique: uniqueIndex('business_policies_business_unique').on(table.businessId),
+  }),
+);
+
+export const businessAuditEvents = mysqlTable(
+  'business_audit_events',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    workspaceId: varchar('workspace_id', { length: 36 })
+      .notNull()
+      .references(() => workspaces.id),
+    businessId: varchar('business_id', { length: 36 }),
+    propertyId: varchar('property_id', { length: 36 }),
+    eventType: varchar('event_type', { length: 60 }).notNull(),
+    actorEmail: varchar('actor_email', { length: 255 }),
+    payload: text('payload'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    workspaceIdx: index('business_audit_workspace_idx').on(table.workspaceId),
+    businessIdx: index('business_audit_business_idx').on(table.businessId),
+  }),
+);
+
+export type PropertyRow = typeof properties.$inferSelect;
+export type PropertyPolicyRow = typeof propertyPolicies.$inferSelect;
+export type BusinessContactRow = typeof businessContacts.$inferSelect;
+export type BusinessPolicyRow = typeof businessPolicies.$inferSelect;
+export type BusinessAuditEventRow = typeof businessAuditEvents.$inferSelect;
