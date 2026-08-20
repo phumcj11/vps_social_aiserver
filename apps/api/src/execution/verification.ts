@@ -5,6 +5,7 @@ import type {
   SubmitOutcome,
   SubmittedCommentObservation,
 } from './types';
+import { commentTextEquals } from './text-normalize';
 
 /**
  * ExecutionVerificationService (SPRINT 012) — PURE and DETERMINISTIC.
@@ -91,14 +92,40 @@ export class ExecutionVerificationService {
         observed.reason ?? 'Submitted comment was not observed on the post',
       );
     }
+
+    // Real-adapter path: the adapter counted comments on the VERIFIED target post
+    // whose text equals the approved content after cosmetic normalization
+    // (emoji/dash/whitespace/Unicode). Success requires EXACTLY ONE such match;
+    // a Facebook comment id is optional evidence, not a requirement. This is what
+    // Facebook actually renders — a raw exact compare misses a real success.
+    if (observed.matchCount != null) {
+      if (observed.matchCount === 0) {
+        return ambiguous('COMMENT_NOT_OBSERVED', 'No normalized-matching comment on the post');
+      }
+      if (observed.matchCount > 1) {
+        return ambiguous(
+          'DUPLICATE_OBSERVED',
+          `Found ${observed.matchCount} matching comments — cannot confirm a single post`,
+        );
+      }
+      if (!commentTextEquals(observed.observedContent ?? '', ctx.approvedContent)) {
+        return ambiguous(
+          'CONTENT_MISMATCH',
+          'Observed comment content does not match the approved content (normalized)',
+        );
+      }
+      return { outcome: 'verified', reasonCode: null, reasonDetail: null };
+    }
+
+    // Legacy path (deterministic fake adapter, no matchCount): a verifiable id is
+    // required, and the observed text must match the approved content.
     if (!observed.facebookCommentId) {
       return ambiguous('COMMENT_ID_MISSING', 'Submitted comment has no verifiable identity');
     }
-    // A screenshot alone is never enough — the observed text must exactly match.
-    if (observed.observedContent !== ctx.approvedContent) {
+    if (!commentTextEquals(observed.observedContent ?? '', ctx.approvedContent)) {
       return ambiguous(
         'CONTENT_MISMATCH',
-        'Observed comment content does not exactly equal the approved content',
+        'Observed comment content does not equal the approved content',
       );
     }
     return { outcome: 'verified', reasonCode: null, reasonDetail: null };

@@ -1,4 +1,9 @@
 import type { SubmittedCommentObservation } from './types';
+import {
+  countNormalizedOccurrences,
+  normalizeCommentText,
+  commentTextHash,
+} from './text-normalize';
 
 /**
  * FacebookCommentPage — the narrow browser seam the real Playwright adapter
@@ -325,13 +330,33 @@ export class PlaywrightCommentPage implements FacebookCommentPage {
 
   async findSubmittedComment(needle: string): Promise<SubmittedCommentObservation> {
     const page = this.requirePage();
-    const found = (await page.getByText(needle.trim(), { exact: true }).count()) > 0;
+    // Read the rendered text of the verified target-post permalink and count
+    // NON-OVERLAPPING, cosmetically-normalized occurrences of the WHOLE approved
+    // content (emoji/dash/whitespace/Unicode tolerant). Facebook re-renders the
+    // comment, so a raw exact match misses a genuine success; a full normalized
+    // match avoids partial/substring false positives. The count is what makes
+    // "exactly one" enforceable (0 → not observed, >1 → duplicate → ambiguous).
+    // Facebook renders the just-posted comment (and lazily-loaded comment lists)
+    // slightly AFTER navigation settles — poll (bounded) for it before concluding
+    // "not observed", so a genuine success is not missed by a race.
+    let bodyText = '';
+    let matchCount = 0;
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      bodyText = ((await page.evaluate('document.body ? document.body.innerText : ""')) ??
+        '') as string;
+      matchCount = countNormalizedOccurrences(bodyText, needle);
+      if (matchCount >= 1) break;
+      await page.waitForTimeout(1500);
+    }
+    const found = matchCount >= 1;
     return {
       found,
       facebookCommentId: null,
-      observedContent: found ? needle.trim() : null,
+      observedContent: found ? normalizeCommentText(needle) : null,
       observedAuthor: null,
       observedPostUrl: stripUrl(page.url()),
+      matchCount,
+      normalizedHash: found ? commentTextHash(needle) : null,
       reason: found ? undefined : 'Submitted comment not observed on the post',
     };
   }

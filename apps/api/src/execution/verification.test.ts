@@ -83,3 +83,49 @@ describe('verifySubmission', () => {
     expect(svc.verifySubmission(ctx, { status: 'failed' }, good).outcome).toBe('failed');
   });
 });
+
+describe('verifySubmission — normalized match-count path (real adapter)', () => {
+  const submitted: SubmitOutcome = { status: 'submitted' };
+  const base: SubmittedCommentObservation = {
+    found: true,
+    facebookCommentId: null, // id is OPTIONAL on this path
+    observedContent: 'สวัสดีค่ะ',
+    observedAuthor: null,
+    observedPostUrl: ctx.targetUrl,
+  };
+
+  it('verified with exactly one normalized match and NO comment id', () => {
+    expect(svc.verifySubmission(ctx, submitted, { ...base, matchCount: 1 }).outcome).toBe(
+      'verified',
+    );
+  });
+
+  it('verified when the observed text differs only cosmetically (em-dash/emoji)', () => {
+    const ctx2 = { ...ctx, approvedContent: 'ทดสอบ — ค่ะ 😊' };
+    const obs: SubmittedCommentObservation = {
+      ...base,
+      matchCount: 1,
+      observedContent: 'ทดสอบ - ค่ะ 😊️',
+    };
+    expect(svc.verifySubmission(ctx2, submitted, obs).outcome).toBe('verified');
+  });
+
+  it('ambiguous (DUPLICATE_OBSERVED) when more than one match exists', () => {
+    const v = svc.verifySubmission(ctx, submitted, { ...base, matchCount: 2 });
+    expect(v).toMatchObject({ outcome: 'ambiguous', reasonCode: 'DUPLICATE_OBSERVED' });
+  });
+
+  it('ambiguous (COMMENT_NOT_OBSERVED) when zero matches', () => {
+    const v = svc.verifySubmission(ctx, submitted, { ...base, found: true, matchCount: 0 });
+    expect(v).toMatchObject({ outcome: 'ambiguous', reasonCode: 'COMMENT_NOT_OBSERVED' });
+  });
+
+  it('ambiguous when the single match content does not normalize-equal', () => {
+    const obs: SubmittedCommentObservation = {
+      ...base,
+      matchCount: 1,
+      observedContent: 'ข้อความอื่นโดยสิ้นเชิง',
+    };
+    expect(svc.verifySubmission(ctx, submitted, obs).outcome).toBe('ambiguous');
+  });
+});

@@ -89,6 +89,17 @@ export interface SubmittedCommentObservation {
   observedContent: string | null;
   observedAuthor: string | null;
   observedPostUrl: string | null;
+  /**
+   * Number of comments on the verified target post whose text equals the
+   * approved content AFTER cosmetic normalization. Exactly one → a verified
+   * match; more than one → ambiguous (duplicate); zero → not observed. When a
+   * real adapter provides this, the verifier uses normalized matching and does
+   * NOT require a Facebook comment id. Optional so the deterministic fake
+   * adapter keeps its id-required legacy semantics.
+   */
+  matchCount?: number;
+  /** SHA-256 of the normalized observed content, for evidence. */
+  normalizedHash?: string | null;
   reason?: string;
 }
 
