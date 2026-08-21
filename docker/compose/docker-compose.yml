@@ -39,6 +39,9 @@ services:
   mysql:
     image: mysql:8.0
     <<: *restart_policy
+    # SPRINT 017 production hardening: DB must return after host reboot;
+    # an intentional operator `docker stop` still stays stopped until started.
+    restart: unless-stopped
     env_file:
       - path: ../../.env
         required: false
