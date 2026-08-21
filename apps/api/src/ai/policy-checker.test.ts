@@ -23,6 +23,11 @@ function context(
     matchingReasons: [],
     opportunity: { decision: 'ACCEPT', reasons: [] },
     signal: { message: 'x', sourceUrl: 'u', group: { name: null, url: '' } },
+    property: null,
+    policies: null,
+    approvedContacts: [],
+    mustNotClaim: [],
+    noPropertyMatch: false,
   };
 }
 

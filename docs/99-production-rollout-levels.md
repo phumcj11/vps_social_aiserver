@@ -27,3 +27,10 @@ Only after Level 1 exit criteria. Possibly 6–10 groups, higher read frequency;
 
 ## LEVEL 3 — Assisted Operations
 Future only. **Automatic public-group commenting is NOT implemented in this sprint** and is out of scope until much later, with separate design and approval.
+
+> **SPRINT 016B note:** the Property Match stage sits **upstream** of execution —
+> it enriches the AI draft + Human Review with the selected Property (or
+> NO_PROPERTY_MATCH). It changes NO write/rollout semantics: Action Jobs still
+> derive only from an APPROVED Review, no production Facebook write is enabled,
+> and Action Jobs may additionally reference `property_match_id` / `property_id`
+> for traceability only. See [sprints/SPRINT-016B](sprints/SPRINT-016B-property-match-pipeline.md).

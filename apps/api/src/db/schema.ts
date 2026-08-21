@@ -583,6 +583,58 @@ export const businessMatches = mysqlTable(
 export type BusinessMatchRow = typeof businessMatches.$inferSelect;
 
 /**
+ * ── SPRINT 016B: Property Match ──────────────────────────────────────────────
+ *
+ * After a Business MATCH, the deterministic Property matcher evaluates the
+ * Business's own active Properties against the Opportunity and persists ONE
+ * result per Business Match: either the selected Property (MATCH) or a single
+ * NO_MATCH row (property_id NULL) with reason NO_PROPERTY_MATCH. No embeddings,
+ * no AI, no fabricated Property — deterministic reasons only.
+ */
+export const propertyMatches = mysqlTable(
+  'property_matches',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    workspaceId: varchar('workspace_id', { length: 36 })
+      .notNull()
+      .references(() => workspaces.id),
+    opportunityId: varchar('opportunity_id', { length: 36 })
+      .notNull()
+      .references(() => opportunities.id),
+    businessMatchId: varchar('business_match_id', { length: 36 })
+      .notNull()
+      .references(() => businessMatches.id),
+    businessId: varchar('business_id', { length: 36 })
+      .notNull()
+      .references(() => businesses.id),
+    // NULL when the decision is NO_MATCH (NO_PROPERTY_MATCH) — never a fabricated Property.
+    propertyId: varchar('property_id', { length: 36 }).references(() => properties.id),
+    // MATCH | NO_MATCH (deterministic — no confidence, no score).
+    decision: varchar('decision', { length: 10 }).notNull(),
+    // JSON-encoded { reasons: string[], rejected: [...], requirement: {...} }. No secrets.
+    reasons: text('reasons'),
+    matcherVersion: varchar('matcher_version', { length: 40 }).notNull(),
+    // How many active Properties were evaluated for this Business Match.
+    candidatesEvaluated: int('candidates_evaluated').notNull().default(0),
+    evaluatedAt: timestamp('evaluated_at').notNull().defaultNow(),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => ({
+    // One Property evaluation result per Business Match (idempotent re-runs skip).
+    businessMatchUnique: uniqueIndex('property_matches_business_match_unique').on(
+      table.businessMatchId,
+    ),
+    workspaceIdx: index('property_matches_workspace_idx').on(table.workspaceId),
+    opportunityIdx: index('property_matches_opportunity_idx').on(table.opportunityId),
+    businessIdx: index('property_matches_business_idx').on(table.businessId),
+    propertyIdx: index('property_matches_property_idx').on(table.propertyId),
+    decisionIdx: index('property_matches_decision_idx').on(table.workspaceId, table.decision),
+  }),
+);
+
+export type PropertyMatchRow = typeof propertyMatches.$inferSelect;
+
+/**
  * ── SPRINT 009: AI Draft Engine ──────────────────────────────────────────────
  *
  * The AI Draft Engine turns a MATCH Business Match into a **draft comment
@@ -703,6 +755,13 @@ export const reviewTasks = mysqlTable(
     decidedBy: varchar('decided_by', { length: 36 }),
     decidedAt: datetime('decided_at'),
     decisionReason: varchar('decision_reason', { length: 500 }),
+    // SPRINT 016B — immutable snapshot of the Property-match context at creation.
+    // These freeze which Business/Property/Property-Match the Draft was built on
+    // so a later Property edit cannot silently mutate an existing Review.
+    businessId: varchar('business_id', { length: 36 }),
+    propertyId: varchar('property_id', { length: 36 }),
+    propertyMatchId: varchar('property_match_id', { length: 36 }),
+    contextHash: varchar('context_hash', { length: 64 }),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow().onUpdateNow(),
   },

@@ -481,6 +481,76 @@ export interface BusinessMatchFilter {
   limit?: number;
 }
 
+// ── Property Match (SPRINT 016B) ─────────────────────────────────────────────
+
+export type PropertyMatchDecision = 'MATCH' | 'NO_MATCH';
+
+/** One rejected candidate recorded for auditability (why it lost / was excluded). */
+export interface PropertyMatchRejection {
+  propertyId: string;
+  propertyName: string;
+  decision: PropertyMatchDecision;
+  reasons: string[];
+}
+
+/** JSON-encoded reasons blob stored on a property_matches row. No secrets. */
+export interface PropertyMatchReasons {
+  /** Reasons for the persisted decision (the selected Property, or NO_PROPERTY_MATCH). */
+  reasons: string[];
+  /** Every other evaluated Property and why it was not selected. */
+  rejected: PropertyMatchRejection[];
+  /** Deterministically parsed Opportunity requirement snapshot (facts only). */
+  requirement: Record<string, unknown>;
+}
+
+export interface PropertyMatchRecord {
+  id: string;
+  workspaceId: string;
+  opportunityId: string;
+  businessMatchId: string;
+  businessId: string;
+  /** null when the decision is NO_MATCH (NO_PROPERTY_MATCH) — never fabricated. */
+  propertyId: string | null;
+  decision: PropertyMatchDecision;
+  reasons: PropertyMatchReasons;
+  matcherVersion: string;
+  candidatesEvaluated: number;
+  evaluatedAt: Date;
+  createdAt: Date;
+}
+
+export interface CreatePropertyMatchInput {
+  id: string;
+  workspaceId: string;
+  opportunityId: string;
+  businessMatchId: string;
+  businessId: string;
+  propertyId: string | null;
+  decision: PropertyMatchDecision;
+  reasons: PropertyMatchReasons;
+  matcherVersion: string;
+  candidatesEvaluated: number;
+}
+
+export interface PropertyMatchFilter {
+  opportunityId?: string;
+  businessId?: string;
+  businessMatchId?: string;
+  propertyId?: string;
+  decision?: PropertyMatchDecision;
+  limit?: number;
+}
+
+/** Aggregate read model for the Property-match funnel (SPRINT 016B operations). */
+export interface MatchingFunnelCounts {
+  businessMatch: { MATCH: number; NO_MATCH: number };
+  propertyMatch: { MATCH: number; NO_MATCH: number };
+  candidatesEvaluated: number;
+  propertiesReceivingMatches: number;
+  businessMatchWithNoPropertyMatch: number;
+  topNoMatchReasons: Array<{ reason: string; count: number }>;
+}
+
 // ── AI Draft Engine (SPRINT 009) ─────────────────────────────────────────────
 
 export type AiDraftStatus = 'draft' | 'needs_review' | 'rejected' | 'superseded';
@@ -566,6 +636,11 @@ export interface ReviewTaskRecord {
   decidedBy: string | null;
   decidedAt: Date | null;
   decisionReason: string | null;
+  // SPRINT 016B — immutable Property-match context snapshot (frozen at creation).
+  businessId: string | null;
+  propertyId: string | null;
+  propertyMatchId: string | null;
+  contextHash: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -576,6 +651,11 @@ export interface CreateReviewTaskInput {
   businessMatchId: string;
   draftId: string;
   assignedTo: string | null;
+  // SPRINT 016B — Property-match context snapshot (optional; frozen at creation).
+  businessId?: string | null;
+  propertyId?: string | null;
+  propertyMatchId?: string | null;
+  contextHash?: string | null;
 }
 
 export interface UpdateReviewTaskInput {
@@ -1037,6 +1117,16 @@ export interface Store {
     workspaceId: string,
     filter?: BusinessMatchFilter,
   ): Promise<BusinessMatchRecord[]>;
+
+  // Property matches (SPRINT 016B) — one deterministic result per Business Match
+  createPropertyMatch(input: CreatePropertyMatchInput): Promise<PropertyMatchRecord>;
+  getPropertyMatchById(id: string): Promise<PropertyMatchRecord | null>;
+  getPropertyMatchByBusinessMatch(businessMatchId: string): Promise<PropertyMatchRecord | null>;
+  listPropertyMatchesByWorkspace(
+    workspaceId: string,
+    filter?: PropertyMatchFilter,
+  ): Promise<PropertyMatchRecord[]>;
+  getMatchingFunnelCounts(workspaceId: string): Promise<MatchingFunnelCounts>;
 
   // AI drafts (SPRINT 009) — immutable, versioned; one row per (match, version)
   createAiDraft(input: CreateAiDraftInput): Promise<AiDraftRecord>;

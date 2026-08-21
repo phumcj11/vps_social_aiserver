@@ -118,6 +118,12 @@ describe('MatchingCoordinator', () => {
       matches: 1,
       noMatches: 1,
       skipped: 0,
+      // The one Business MATCH runs the Property stage; this coordinator has no
+      // bpStore, so the business has no Properties → a single NO_PROPERTY_MATCH.
+      propertyCandidates: 0,
+      propertyMatches: 0,
+      propertyNoMatches: 1,
+      propertySkipped: 0,
     });
 
     const all = await coord.listMatches(ws, { opportunityId: opp.id });

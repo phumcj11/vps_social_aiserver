@@ -391,8 +391,43 @@ export interface ReviewTask {
   decidedBy: string | null;
   decidedAt: string | null;
   decisionReason: string | null;
+  businessId: string | null;
+  propertyId: string | null;
+  propertyMatchId: string | null;
+  contextHash: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PropertyMatchSummary {
+  id: string;
+  opportunityId: string;
+  businessMatchId: string;
+  businessId: string;
+  businessName: string | null;
+  propertyId: string | null;
+  propertyName: string | null;
+  decision: 'MATCH' | 'NO_MATCH';
+  reasons: string[];
+  rejected: {
+    propertyId: string;
+    propertyName: string;
+    decision: 'MATCH' | 'NO_MATCH';
+    reasons: string[];
+  }[];
+  requirement: Record<string, unknown>;
+  matcherVersion: string;
+  candidatesEvaluated: number;
+  evaluatedAt: string;
+}
+
+export interface PropertyMatchFunnel {
+  businessMatch: { MATCH: number; NO_MATCH: number };
+  propertyMatch: { MATCH: number; NO_MATCH: number };
+  candidatesEvaluated: number;
+  propertiesReceivingMatches: number;
+  businessMatchWithNoPropertyMatch: number;
+  topNoMatchReasons: { reason: string; count: number }[];
 }
 
 export interface ReviewPresentation {
@@ -864,7 +899,38 @@ export const api = {
       business: { id: string; name: string; slug: string; status: string } | null;
       presentation: ReviewPresentation | null;
       events: ReviewEvent[];
+      // SPRINT 016B — Property-match review context + warnings.
+      propertyMatch: {
+        id: string;
+        decision: 'MATCH' | 'NO_MATCH';
+        propertyId: string | null;
+        propertyName: string | null;
+        reasons: string[];
+        matcherVersion: string;
+        candidatesEvaluated: number;
+        requirement: Record<string, unknown>;
+      } | null;
+      property: {
+        id: string;
+        name: string;
+        propertyType: string | null;
+        area: string | null;
+        maxGuests: number | null;
+        bedrooms: number | null;
+      } | null;
+      warnings: string[];
     }>(`/reviews/${id}`, { method: 'GET' }),
+  listPropertyMatches: (filter?: { opportunityId?: string; decision?: string }) => {
+    const q = new URLSearchParams();
+    if (filter?.opportunityId) q.set('opportunityId', filter.opportunityId);
+    if (filter?.decision) q.set('decision', filter.decision);
+    const qs = q.toString();
+    return request<{ matches: PropertyMatchSummary[] }>(`/property-matches${qs ? `?${qs}` : ''}`, {
+      method: 'GET',
+    });
+  },
+  getPropertyMatchingFunnel: () =>
+    request<{ funnel: PropertyMatchFunnel }>('/property-matching/funnel', { method: 'GET' }),
   approveReview: (id: string, reason?: string) =>
     request<{ review: ReviewTask }>(`/reviews/${id}/approve`, {
       method: 'POST',

@@ -50,6 +50,10 @@ import type {
   BusinessMatchRecord,
   CreateBusinessMatchInput,
   BusinessMatchFilter,
+  PropertyMatchRecord,
+  CreatePropertyMatchInput,
+  PropertyMatchFilter,
+  MatchingFunnelCounts,
   AiDraftRecord,
   AiDraftStatus,
   CreateAiDraftInput,
@@ -108,6 +112,7 @@ export class InMemoryStore implements Store {
   private opportunities = new Map<string, OpportunityRecord>(); // keyed by id
   private opportunityEvents: OpportunityEventRecord[] = [];
   private businessMatches = new Map<string, BusinessMatchRecord>(); // keyed by id
+  private propertyMatches = new Map<string, PropertyMatchRecord>(); // keyed by id
   private aiDrafts = new Map<string, AiDraftRecord>(); // keyed by id
   private aiDraftEvents: AiDraftEventRecord[] = [];
   private reviewTasks = new Map<string, ReviewTaskRecord>(); // keyed by id
@@ -1071,6 +1076,117 @@ export class InMemoryStore implements Store {
       .map((m) => this.cloneMatch(m));
   }
 
+  // ── Property matches (SPRINT 016B) ─────────────────────────────────────────
+
+  private clonePropertyMatch(m: PropertyMatchRecord): PropertyMatchRecord {
+    return {
+      ...m,
+      reasons: {
+        reasons: [...m.reasons.reasons],
+        rejected: m.reasons.rejected.map((r) => ({ ...r, reasons: [...r.reasons] })),
+        requirement: { ...m.reasons.requirement },
+      },
+    };
+  }
+
+  async createPropertyMatch(input: CreatePropertyMatchInput): Promise<PropertyMatchRecord> {
+    for (const m of this.propertyMatches.values()) {
+      if (m.businessMatchId === input.businessMatchId) {
+        throw new Error('duplicate property match for business match');
+      }
+    }
+    const now = this.now();
+    const record: PropertyMatchRecord = {
+      id: input.id,
+      workspaceId: input.workspaceId,
+      opportunityId: input.opportunityId,
+      businessMatchId: input.businessMatchId,
+      businessId: input.businessId,
+      propertyId: input.propertyId,
+      decision: input.decision,
+      reasons: {
+        reasons: [...input.reasons.reasons],
+        rejected: input.reasons.rejected.map((r) => ({ ...r, reasons: [...r.reasons] })),
+        requirement: { ...input.reasons.requirement },
+      },
+      matcherVersion: input.matcherVersion,
+      candidatesEvaluated: input.candidatesEvaluated,
+      evaluatedAt: now,
+      createdAt: now,
+    };
+    this.propertyMatches.set(record.id, record);
+    return this.clonePropertyMatch(record);
+  }
+
+  async getPropertyMatchById(id: string): Promise<PropertyMatchRecord | null> {
+    const m = this.propertyMatches.get(id);
+    return m ? this.clonePropertyMatch(m) : null;
+  }
+
+  async getPropertyMatchByBusinessMatch(
+    businessMatchId: string,
+  ): Promise<PropertyMatchRecord | null> {
+    for (const m of this.propertyMatches.values()) {
+      if (m.businessMatchId === businessMatchId) return this.clonePropertyMatch(m);
+    }
+    return null;
+  }
+
+  async listPropertyMatchesByWorkspace(
+    workspaceId: string,
+    filter: PropertyMatchFilter = {},
+  ): Promise<PropertyMatchRecord[]> {
+    return [...this.propertyMatches.values()]
+      .filter(
+        (m) =>
+          m.workspaceId === workspaceId &&
+          (filter.opportunityId === undefined || m.opportunityId === filter.opportunityId) &&
+          (filter.businessId === undefined || m.businessId === filter.businessId) &&
+          (filter.businessMatchId === undefined || m.businessMatchId === filter.businessMatchId) &&
+          (filter.propertyId === undefined || m.propertyId === filter.propertyId) &&
+          (filter.decision === undefined || m.decision === filter.decision),
+      )
+      .sort((a, b) => b.evaluatedAt.getTime() - a.evaluatedAt.getTime())
+      .slice(0, filter.limit ?? 500)
+      .map((m) => this.clonePropertyMatch(m));
+  }
+
+  async getMatchingFunnelCounts(workspaceId: string): Promise<MatchingFunnelCounts> {
+    const bms = [...this.businessMatches.values()].filter((m) => m.workspaceId === workspaceId);
+    const pms = [...this.propertyMatches.values()].filter((m) => m.workspaceId === workspaceId);
+    const businessMatch = {
+      MATCH: bms.filter((m) => m.decision === 'MATCH').length,
+      NO_MATCH: bms.filter((m) => m.decision === 'NO_MATCH').length,
+    };
+    const propertyMatch = {
+      MATCH: pms.filter((m) => m.decision === 'MATCH').length,
+      NO_MATCH: pms.filter((m) => m.decision === 'NO_MATCH').length,
+    };
+    const candidatesEvaluated = pms.reduce((sum, m) => sum + m.candidatesEvaluated, 0);
+    const propertiesReceivingMatches = new Set(
+      pms.filter((m) => m.decision === 'MATCH' && m.propertyId).map((m) => m.propertyId),
+    ).size;
+    const reasonTally = new Map<string, number>();
+    for (const m of pms.filter((x) => x.decision === 'NO_MATCH')) {
+      for (const reason of m.reasons.reasons) {
+        const code = (reason.split(':')[0] ?? reason).trim();
+        reasonTally.set(code, (reasonTally.get(code) ?? 0) + 1);
+      }
+    }
+    const topNoMatchReasons = [...reasonTally.entries()]
+      .map(([reason, count]) => ({ reason, count }))
+      .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason))
+      .slice(0, 10);
+    return {
+      businessMatch,
+      propertyMatch,
+      candidatesEvaluated,
+      propertiesReceivingMatches,
+      businessMatchWithNoPropertyMatch: propertyMatch.NO_MATCH,
+      topNoMatchReasons,
+    };
+  }
+
   // ── AI drafts (SPRINT 009) ─────────────────────────────────────────────────
 
   private cloneDraft(d: AiDraftRecord): AiDraftRecord {
@@ -1202,6 +1318,10 @@ export class InMemoryStore implements Store {
       decidedBy: null,
       decidedAt: null,
       decisionReason: null,
+      businessId: input.businessId ?? null,
+      propertyId: input.propertyId ?? null,
+      propertyMatchId: input.propertyMatchId ?? null,
+      contextHash: input.contextHash ?? null,
       createdAt: now,
       updatedAt: now,
     };

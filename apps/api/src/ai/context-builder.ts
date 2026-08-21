@@ -9,6 +9,10 @@ import type {
   FacebookGroupRecord,
 } from '../store/types';
 import type { DraftContext } from './types';
+import type { Property, ContactChannel, BusinessPolicies } from '../business-property/types';
+import { buildPropertyDraftContext } from '../business-property/draft-context';
+import { resolvePropertyPolicies } from '../business-property/policies';
+import { approvedDraftChannels } from '../business-property/contacts';
 import { AiDraftError, AiDraftErrorCode } from './errors';
 
 export interface ContextBuilderInput {
@@ -23,6 +27,12 @@ export interface ContextBuilderInput {
   profile: BusinessProfileRecord | null;
   knowledge: BusinessKnowledgeRecord[];
   rules: BusinessMatchingRuleRecord[];
+  // SPRINT 016B — Property-match context (optional; wired by the coordinator).
+  selectedProperty?: Property | null;
+  businessPolicies?: BusinessPolicies | null;
+  contacts?: ContactChannel[];
+  /** True when the Business MATCH produced NO Property MATCH. */
+  noPropertyMatch?: boolean;
 }
 
 export interface ContextBuilderConfig {
@@ -89,6 +99,60 @@ export function buildDraftContext(
     .filter((r) => r.businessId === business.id && r.status === 'active')
     .map((r) => ({ ruleType: r.ruleType, ruleValue: r.ruleValue }));
 
+  // ── SPRINT 016B: selected Property + effective policies + approved contacts ──
+  // A selected Property must belong to this Business + Workspace (no cross leak).
+  if (
+    input.selectedProperty &&
+    (input.selectedProperty.workspaceId !== workspaceId ||
+      input.selectedProperty.businessId !== business.id)
+  ) {
+    throw new AiDraftError(
+      AiDraftErrorCode.INVALID_WORKSPACE,
+      'Selected property does not belong to the matched business/workspace',
+    );
+  }
+
+  let property: DraftContext['property'] = null;
+  let policies: DraftContext['policies'] = null;
+  let approvedContacts: DraftContext['approvedContacts'] = [];
+  let mustNotClaim: string[] = [...(input.profile?.prohibitedClaims ?? [])];
+
+  if (input.businessPolicies) {
+    const effective = input.selectedProperty
+      ? resolvePropertyPolicies(input.businessPolicies, input.selectedProperty.policyOverrides)
+      : null;
+    const bp = buildPropertyDraftContext({
+      businessName: business.name,
+      serviceArea: input.profile?.serviceArea ?? null,
+      responseTone: input.profile?.responseTone ?? null,
+      businessPolicies: input.businessPolicies,
+      contacts: input.contacts ?? [],
+      property: input.selectedProperty ?? null,
+      effectivePolicies: effective,
+    });
+    property = bp.property;
+    policies = {
+      availabilityPolicy: bp.policies.availabilityPolicy,
+      pricingPolicy: bp.policies.pricingPolicy,
+      promotionPolicy: bp.policies.promotionPolicy,
+      bookingPolicy: bp.policies.bookingPolicy,
+    };
+    approvedContacts = bp.approvedContacts.map((c) => ({
+      type: c.type,
+      value: c.value,
+      label: c.label,
+    }));
+    mustNotClaim = Array.from(new Set([...mustNotClaim, ...bp.mustNotClaim]));
+  } else {
+    // No policies configured yet — expose only draft-approved contacts, and make
+    // no Property claims (property stays null; mustNotClaim keeps prohibited).
+    approvedContacts = approvedDraftChannels(input.contacts ?? []).map((c) => ({
+      type: c.type,
+      value: c.value,
+      label: c.label,
+    }));
+  }
+
   return {
     business: {
       name: business.name,
@@ -119,5 +183,10 @@ export function buildDraftContext(
         url: input.group?.canonicalUrl ?? '',
       },
     },
+    property,
+    policies,
+    approvedContacts,
+    mustNotClaim,
+    noPropertyMatch: input.noPropertyMatch ?? false,
   };
 }

@@ -23,6 +23,25 @@ function context(): DraftContext {
       sourceUrl: 'https://www.facebook.com/groups/1/posts/abc',
       group: { name: 'กลุ่มบ้าน', url: 'https://www.facebook.com/groups/1' },
     },
+    property: {
+      name: 'Sea Villa 02',
+      area: 'บางแสน',
+      propertyType: 'pool_villa',
+      maxGuests: 15,
+      bedrooms: 4,
+      amenities: ['private pool', 'karaoke'],
+      priceFact: null,
+      sellingPoints: ['วิวทะเล'],
+    },
+    policies: {
+      availabilityPolicy: 'MANUAL_CONFIRMATION',
+      pricingPolicy: 'DO_NOT_MENTION',
+      promotionPolicy: 'NONE',
+      bookingPolicy: 'CONTACT_ONLY',
+    },
+    approvedContacts: [{ type: 'PHONE', value: '0812345678', label: null }],
+    mustNotClaim: ['price', 'promotion'],
+    noPropertyMatch: false,
   };
 }
 
@@ -35,9 +54,12 @@ describe('AiDraftPromptBuilder', () => {
     expect(a.layers.map((l) => l.label)).toEqual([
       'System Rules',
       'Business Context',
+      'Property Facts',
       'Opportunity Context',
       'Matching Reasons',
       'Prohibited Claims',
+      'Must Not Claim',
+      'Approved Contacts',
       'Tone Instructions',
       'Output Contract',
     ]);

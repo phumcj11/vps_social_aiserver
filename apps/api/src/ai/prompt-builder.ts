@@ -10,7 +10,7 @@ import type { DraftContext, BuiltPrompt, PromptLayer } from './types';
  * reasoning / chain-of-thought and NEVER embeds secrets.
  */
 
-export const PROMPT_VERSION = 'rules-v1';
+export const PROMPT_VERSION = 'rules-v2-property';
 
 function joinLines(lines: (string | null | undefined)[]): string {
   return lines.filter((l): l is string => typeof l === 'string' && l.length > 0).join('\n');
@@ -56,6 +56,49 @@ export function buildDraftPrompt(context: DraftContext, maxLength: number): Buil
       .map((r) => `- ${r.ruleType}: ${r.ruleValue}`),
   ]);
 
+  // SPRINT 016B — Property Facts layer. Only STORED facts appear; when there is
+  // no matching Property, the draft must make no Property-specific claim.
+  const p = context.property;
+  const propertyFacts = context.noPropertyMatch
+    ? joinLines([
+        'Property match: NONE.',
+        'No specific accommodation matched this request. Do NOT describe, name, or imply any',
+        'specific property, room, price, or availability. Respond only at the business level',
+        'and invite the poster to share more detail or contact the business.',
+      ])
+    : p
+      ? joinLines([
+          'Matched property (use ONLY these stored facts — never add or infer others):',
+          `- Name: ${p.name}`,
+          p.area ? `- Area: ${p.area}` : null,
+          p.propertyType ? `- Type: ${p.propertyType}` : null,
+          p.maxGuests != null ? `- Max guests: ${p.maxGuests}` : null,
+          p.bedrooms != null ? `- Bedrooms: ${p.bedrooms}` : null,
+          p.amenities.length ? `- Amenities: ${p.amenities.join(', ')}` : null,
+          p.priceFact ? `- Price (only as stated): ${p.priceFact}` : null,
+          p.sellingPoints.length ? `- Selling points: ${p.sellingPoints.join('; ')}` : null,
+        ])
+      : null;
+
+  const mustNotClaim = context.mustNotClaim.length
+    ? joinLines([
+        'Must NOT claim (hard constraints — the draft may never state any of these):',
+        ...context.mustNotClaim.map((c) => `- ${c}`),
+      ])
+    : null;
+
+  const approvedContacts = context.approvedContacts.length
+    ? joinLines([
+        'Approved contact channels (the ONLY channels you may mention, verbatim):',
+        ...context.approvedContacts.map(
+          (c) => `- ${c.type}: ${c.value}${c.label ? ` (${c.label})` : ''}`,
+        ),
+      ])
+    : joinLines([
+        'Approved contact channels: NONE approved for drafts. Do NOT state any phone,',
+        'LINE, email, website, or page — invite the poster to contact the business generally.',
+      ]);
+
   const prohibitedClaims = joinLines([
     'Prohibited claims (hard constraints — never state any of these):',
     ...(context.prohibitedClaims.length
@@ -82,9 +125,12 @@ export function buildDraftPrompt(context: DraftContext, maxLength: number): Buil
   const layers: PromptLayer[] = [
     { label: 'System Rules', content: systemRules },
     { label: 'Business Context', content: businessContext },
+    ...(propertyFacts ? [{ label: 'Property Facts', content: propertyFacts }] : []),
     { label: 'Opportunity Context', content: opportunityContext },
     { label: 'Matching Reasons', content: matchingReasons },
     { label: 'Prohibited Claims', content: prohibitedClaims },
+    ...(mustNotClaim ? [{ label: 'Must Not Claim', content: mustNotClaim }] : []),
+    { label: 'Approved Contacts', content: approvedContacts },
     { label: 'Tone Instructions', content: toneInstructions },
     { label: 'Output Contract', content: outputContract },
   ];

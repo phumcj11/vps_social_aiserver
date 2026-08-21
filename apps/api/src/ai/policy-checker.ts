@@ -127,9 +127,16 @@ export function checkDraft(
     }
   }
 
-  // Contact details present in content but NOT in the business-provided contact.
-  const allowedContact = (context.business.contactInformation ?? '').toLowerCase();
-  const allowedDigits = digitsOnly(allowedContact);
+  // Contact details present in content but NOT among the APPROVED channels.
+  // SPRINT 016B — the allow-list is the structured draft-approved contacts plus
+  // the legacy free-text contact string; nothing else may appear in a draft.
+  const approvedContactText = context.approvedContacts.map((c) => c.value).join(' ');
+  const allowedContact =
+    `${context.business.contactInformation ?? ''} ${approvedContactText}`.toLowerCase();
+  const allowedDigits = context.approvedContacts
+    .map((c) => digitsOnly(c.value))
+    .concat(digitsOnly((context.business.contactInformation ?? '').toLowerCase()))
+    .join(' ');
   const found = [...(trimmed.match(EMAIL_RE) ?? []), ...(trimmed.match(URL_RE) ?? [])];
   for (const token of found) {
     if (!allowedContact.includes(token.toLowerCase())) {
@@ -167,6 +174,58 @@ export function checkDraft(
     reasons.push({
       code: 'UNSUPPORTED_PROMOTION',
       detail: `Mentions a promotion not supported by the business context: "${promo.trim()}"`,
+      severity: 'NEEDS_REVIEW',
+    });
+  }
+
+  // ── SPRINT 016B: effective-policy "must not claim" enforcement ────────────
+  const mustNot = new Set(context.mustNotClaim.map((c) => c.toLowerCase()));
+  const PRICE_MENTION_RE = /\d[\d,.]*\s*(บาท|฿|baht|thb|\/\s*คืน|per\s*night)/i;
+  const AVAILABILITY_TERMS = ['ว่าง', 'ห้องว่าง', 'มีห้อง', 'จองได้', 'available', 'vacant'];
+  const CAPACITY_MENTION_RE = /\d+\s*(คน|ท่าน|pax|persons?|guests?)/i;
+
+  if (mustNot.has('price') && PRICE_MENTION_RE.test(trimmed)) {
+    reasons.push({
+      code: 'MUSTNOTCLAIM_PRICE',
+      detail: 'Mentions a price but the effective pricing policy forbids stating one',
+      severity: 'NEEDS_REVIEW',
+    });
+  }
+  // Availability may be ASSERTED only under a self-serve/calendar policy; under
+  // MANUAL_CONFIRMATION or DO_NOT_MENTION a bare vacancy claim needs review.
+  const availabilityPolicy = context.policies?.availabilityPolicy;
+  const availabilityForbidden =
+    mustNot.has('availability') ||
+    availabilityPolicy === 'MANUAL_CONFIRMATION' ||
+    availabilityPolicy === 'DO_NOT_MENTION';
+  if (availabilityForbidden && includesAny(lower, AVAILABILITY_TERMS)) {
+    reasons.push({
+      code: 'MUSTNOTCLAIM_AVAILABILITY',
+      detail: 'Asserts availability but the effective availability policy forbids it',
+      severity: 'NEEDS_REVIEW',
+    });
+  }
+  if (mustNot.has('promotion') && promo) {
+    reasons.push({
+      code: 'MUSTNOTCLAIM_PROMOTION',
+      detail: 'Mentions a promotion but the effective promotion policy is NONE',
+      severity: 'NEEDS_REVIEW',
+    });
+  }
+  if (mustNot.has('capacity') && CAPACITY_MENTION_RE.test(trimmed)) {
+    reasons.push({
+      code: 'MUSTNOTCLAIM_CAPACITY',
+      detail: 'States a guest capacity that is not stored for the property',
+      severity: 'NEEDS_REVIEW',
+    });
+  }
+
+  // A Business MATCH with NO Property MATCH always needs a human to confirm the
+  // response makes no property-specific claim (documented NO_PROPERTY_MATCH policy).
+  if (context.noPropertyMatch && trimmed.length > 0) {
+    reasons.push({
+      code: 'NO_PROPERTY_MATCH',
+      detail: 'No property matched this request — verify the reply makes no property claim',
       severity: 'NEEDS_REVIEW',
     });
   }

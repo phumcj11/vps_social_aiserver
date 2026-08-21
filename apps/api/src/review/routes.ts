@@ -34,6 +34,11 @@ function publicTask(t: ReviewTaskRecord) {
     decidedBy: t.decidedBy,
     decidedAt: t.decidedAt ? t.decidedAt.toISOString() : null,
     decisionReason: t.decisionReason,
+    // SPRINT 016B — immutable Property-match context snapshot.
+    businessId: t.businessId,
+    propertyId: t.propertyId,
+    propertyMatchId: t.propertyMatchId,
+    contextHash: t.contextHash,
     createdAt: t.createdAt.toISOString(),
     updatedAt: t.updatedAt.toISOString(),
   };
@@ -67,6 +72,35 @@ function publicOpportunity(o: OpportunityRecord | null) {
 function publicBusiness(b: BusinessRecord | null) {
   if (!b) return null;
   return { id: b.id, name: b.name, slug: b.slug, status: b.status };
+}
+
+function publicReviewPropertyMatch(
+  m: import('../store/types').PropertyMatchRecord | null,
+  propertyName: string | null,
+) {
+  if (!m) return null;
+  return {
+    id: m.id,
+    decision: m.decision,
+    propertyId: m.propertyId,
+    propertyName,
+    reasons: m.reasons.reasons,
+    matcherVersion: m.matcherVersion,
+    candidatesEvaluated: m.candidatesEvaluated,
+    requirement: m.reasons.requirement,
+  };
+}
+
+function publicReviewProperty(p: import('../business-property/types').Property | null) {
+  if (!p) return null;
+  return {
+    id: p.id,
+    name: p.name,
+    propertyType: p.propertyType,
+    area: p.location.area ?? p.location.province,
+    maxGuests: p.capacity.maxGuests,
+    bedrooms: p.capacity.bedrooms,
+  };
 }
 
 function toHttp(err: unknown): never {
@@ -157,6 +191,13 @@ export function registerReviewRoutes(app: FastifyInstance, deps: ReviewRouteDeps
         business: publicBusiness(d.business),
         presentation: d.presentation,
         events: d.events.map(publicEvent),
+        // SPRINT 016B — Property-match review context + warnings.
+        propertyMatch: publicReviewPropertyMatch(
+          d.propertyMatch,
+          d.property ? d.property.name : null,
+        ),
+        property: publicReviewProperty(d.property),
+        warnings: d.warnings,
       };
     } catch (err) {
       toHttp(err);

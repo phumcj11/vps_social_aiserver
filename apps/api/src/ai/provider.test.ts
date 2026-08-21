@@ -26,6 +26,11 @@ function context(overrides: Partial<DraftContext['business']> = {}): DraftContex
       sourceUrl: 'https://www.facebook.com/groups/1/posts/abc',
       group: { name: 'กลุ่มบ้าน', url: 'https://www.facebook.com/groups/1' },
     },
+    property: null,
+    policies: null,
+    approvedContacts: [],
+    mustNotClaim: [],
+    noPropertyMatch: false,
   };
 }
 
@@ -42,7 +47,7 @@ describe('MockAiDraftProvider', () => {
     expect(a.content).toBe(b.content);
     expect(a.provider).toBe('mock');
     expect(a.model).toBe('mock-draft-v1');
-    expect(a.promptVersion).toBe('rules-v1');
+    expect(a.promptVersion).toBe('rules-v2-property');
   });
 
   it('uses only supplied business context and preserves Thai', async () => {

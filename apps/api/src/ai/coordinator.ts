@@ -246,13 +246,24 @@ export class AiDraftCoordinator {
         'Opportunity references missing signal',
       );
     }
-    const [group, profile, knowledge, rules, oppEvents] = await Promise.all([
-      this.deps.repo.getFacebookGroupById(signal.groupId),
-      this.deps.repo.getProfileByBusiness(business.id),
-      this.deps.repo.listKnowledge(business.id),
-      this.deps.repo.listRules(business.id),
-      this.deps.repo.listOpportunityEvents(opportunity.id),
-    ]);
+    const [group, profile, knowledge, rules, oppEvents, propertyMatch, businessPolicies, contacts] =
+      await Promise.all([
+        this.deps.repo.getFacebookGroupById(signal.groupId),
+        this.deps.repo.getProfileByBusiness(business.id),
+        this.deps.repo.listKnowledge(business.id),
+        this.deps.repo.listRules(business.id),
+        this.deps.repo.listOpportunityEvents(opportunity.id),
+        this.deps.repo.getPropertyMatchByBusinessMatch(match.id),
+        this.deps.repo.getBusinessPolicies(business.id),
+        this.deps.repo.listContactsByBusiness(business.id),
+      ]);
+
+    // SPRINT 016B — resolve the selected Property from the persisted Property match.
+    let selectedProperty = null;
+    if (propertyMatch?.decision === 'MATCH' && propertyMatch.propertyId) {
+      selectedProperty = await this.deps.repo.getPropertyById(propertyMatch.propertyId);
+    }
+    const noPropertyMatch = propertyMatch?.decision === 'NO_MATCH';
 
     const creation = oppEvents.find(
       (e) => e.event === 'OpportunityCreated' || e.event === 'OpportunityRejected',
@@ -280,6 +291,10 @@ export class AiDraftCoordinator {
         profile,
         knowledge,
         rules,
+        selectedProperty,
+        businessPolicies,
+        contacts,
+        noPropertyMatch,
       },
       {
         maxKnowledgeItems: this.deps.env.AI_CONTEXT_MAX_KNOWLEDGE_ITEMS,

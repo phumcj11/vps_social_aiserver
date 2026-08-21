@@ -8,13 +8,16 @@ import type {
   BusinessMatchRecord,
   BusinessRecord,
   OpportunityRecord,
+  PropertyMatchRecord,
 } from '../store/types';
+import type { Property } from '../business-property/types';
 import type { ReviewRepository } from './repository';
 import type { ReviewQueue } from './queue';
 import { ReviewEventType } from './queue';
 import type { ReviewAdapter } from './adapter';
 import type { ReviewPresentation, AdapterRef } from './types';
 import { ReviewError, ReviewErrorCode } from './errors';
+import { createHash } from 'node:crypto';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_EDIT_LENGTH = 2000;
@@ -32,6 +35,10 @@ export interface ReviewDetail {
   business: BusinessRecord | null;
   events: ReviewEventRecord[];
   presentation: ReviewPresentation | null;
+  // SPRINT 016B — Property-match review context + derived reviewer warnings.
+  propertyMatch: PropertyMatchRecord | null;
+  property: Property | null;
+  warnings: string[];
 }
 
 export interface ReviewCoordinatorDeps {
@@ -80,11 +87,25 @@ export class ReviewCoordinator {
       );
     }
 
+    // SPRINT 016B — freeze the Property-match context onto the Review so a later
+    // Property edit cannot silently mutate an already-created Review/Draft.
+    const [snapMatch, propertyMatch] = await Promise.all([
+      this.deps.repo.getMatchById(draft.businessMatchId),
+      this.deps.repo.getPropertyMatchByBusinessMatch(draft.businessMatchId),
+    ]);
+    const contextHash = createHash('sha256')
+      .update(JSON.stringify(draft.inputSnapshot ?? {}))
+      .digest('hex');
+
     const { task, created } = await this.deps.queue.create({
       workspaceId,
       businessMatchId: draft.businessMatchId,
       draftId: draft.id,
       assignedTo,
+      businessId: snapMatch?.businessId ?? null,
+      propertyId: propertyMatch?.propertyId ?? null,
+      propertyMatchId: propertyMatch?.id ?? null,
+      contextHash,
     });
 
     if (created) {
@@ -111,7 +132,53 @@ export class ReviewCoordinator {
     const opportunity = match ? await this.deps.repo.getOpportunityById(match.opportunityId) : null;
     const business = match ? await this.deps.repo.getBusinessById(match.businessId) : null;
     const presentation = draft ? await this.buildPresentation(task, draft) : null;
-    return { task, draft, match, opportunity, business, events, presentation };
+
+    // SPRINT 016B — Property-match context + derived warnings for the reviewer.
+    const propertyMatch = await this.deps.repo.getPropertyMatchByBusinessMatch(
+      task.businessMatchId,
+    );
+    // Prefer the snapshotted Property id (immutable) over the live match.
+    const propertyId = task.propertyId ?? propertyMatch?.propertyId ?? null;
+    const property = propertyId ? await this.deps.repo.getPropertyById(propertyId) : null;
+    const warnings = this.deriveWarnings(propertyMatch, draft);
+
+    return {
+      task,
+      draft,
+      match,
+      opportunity,
+      business,
+      events,
+      presentation,
+      propertyMatch,
+      property,
+      warnings,
+    };
+  }
+
+  /** Reviewer-facing warnings derived from the Property match + draft policy result. */
+  private deriveWarnings(
+    propertyMatch: PropertyMatchRecord | null,
+    draft: AiDraftRecord | null,
+  ): string[] {
+    const warnings: string[] = [];
+    const codes = new Set(
+      (draft?.policyResult?.reasons ?? []).map((r) => (r as { code: string }).code),
+    );
+    if (propertyMatch?.decision === 'NO_MATCH' || codes.has('NO_PROPERTY_MATCH'))
+      warnings.push('NO_PROPERTY_MATCH');
+    if (codes.has('MUSTNOTCLAIM_AVAILABILITY') || codes.has('GUARANTEED_AVAILABILITY'))
+      warnings.push('AVAILABILITY_UNVERIFIED');
+    if (codes.has('MUSTNOTCLAIM_PRICE') || codes.has('GUARANTEED_PRICE'))
+      warnings.push('PRICE_UNAVAILABLE');
+    if (codes.has('MUSTNOTCLAIM_CAPACITY')) warnings.push('CAPACITY_UNSUPPORTED');
+    if (codes.has('UNSUPPORTED_CONTACT')) warnings.push('CONTACT_NOT_APPROVED');
+    if (codes.has('UNSUPPORTED_PROMOTION') || codes.has('MUSTNOTCLAIM_PROMOTION'))
+      warnings.push('PROMOTION_UNSUPPORTED');
+    // Requested amenity the selected Property lacks (soft signal).
+    if (propertyMatch?.reasons.reasons.some((r) => r.startsWith('AMENITY_MISSING')))
+      warnings.push('AMENITY_UNSUPPORTED');
+    return Array.from(new Set(warnings));
   }
 
   /** APPROVE — records the human decision only. NEVER posts to Facebook. */

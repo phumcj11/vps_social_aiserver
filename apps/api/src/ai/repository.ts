@@ -14,7 +14,10 @@ import type {
   OpportunityEventRecord,
   SignalRecord,
   FacebookGroupRecord,
+  PropertyMatchRecord,
 } from '../store/types';
+import type { BusinessPropertyStore } from '../business-property/store';
+import type { Property, ContactChannel, BusinessPolicies } from '../business-property/types';
 import { newId } from '../lib/tokens';
 import { AiDraftError, AiDraftErrorCode } from './errors';
 
@@ -27,10 +30,34 @@ import { AiDraftError, AiDraftErrorCode } from './errors';
  * versioned AI Drafts and their events. Single persistence boundary.
  */
 export class AiDraftRepository {
-  constructor(private readonly store: Store) {}
+  constructor(
+    private readonly store: Store,
+    private readonly bpStore?: BusinessPropertyStore,
+  ) {}
 
   getMatchById(id: string): Promise<BusinessMatchRecord | null> {
     return this.store.getBusinessMatchById(id);
+  }
+
+  // ── Property-match context (SPRINT 016B) ───────────────────────────────────
+
+  getPropertyMatchByBusinessMatch(businessMatchId: string): Promise<PropertyMatchRecord | null> {
+    return this.store.getPropertyMatchByBusinessMatch(businessMatchId);
+  }
+
+  async getPropertyById(id: string): Promise<Property | null> {
+    if (!this.bpStore) return null;
+    return this.bpStore.getPropertyById(id);
+  }
+
+  async getBusinessPolicies(businessId: string): Promise<BusinessPolicies | null> {
+    if (!this.bpStore) return null;
+    return this.bpStore.getBusinessPolicies(businessId);
+  }
+
+  async listContactsByBusiness(businessId: string): Promise<ContactChannel[]> {
+    if (!this.bpStore) return [];
+    return this.bpStore.listContactsByBusiness(businessId);
   }
 
   getOpportunityById(id: string): Promise<OpportunityRecord | null> {

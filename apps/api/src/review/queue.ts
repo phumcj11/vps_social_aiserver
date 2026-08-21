@@ -30,6 +30,11 @@ export class ReviewQueue {
     businessMatchId: string;
     draftId: string;
     assignedTo: string | null;
+    // SPRINT 016B — Property-match context snapshot (frozen at creation).
+    businessId?: string | null;
+    propertyId?: string | null;
+    propertyMatchId?: string | null;
+    contextHash?: string | null;
   }): Promise<{ task: ReviewTaskRecord; created: boolean }> {
     const existing = await this.repo.getTaskByDraft(input.draftId);
     if (existing) return { task: existing, created: false };

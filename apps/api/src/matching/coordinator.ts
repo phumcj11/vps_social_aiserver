@@ -4,10 +4,19 @@ import type {
   BusinessMatchFilter,
   BusinessRecord,
   OpportunityRecord,
+  PropertyMatchRecord,
+  PropertyMatchFilter,
+  MatchingFunnelCounts,
 } from '../store/types';
+import type { Property } from '../business-property/types';
 import type { MatchRepository } from './repository';
 import { selectCandidates } from './candidate-generator';
 import { matchBusiness, MATCHER_VERSION } from './matcher';
+import {
+  parsePropertyRequirement,
+  selectBestProperty,
+  PROPERTY_MATCHER_VERSION,
+} from './property-selection';
 import { MatchingError, MatchingErrorCode } from './errors';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -18,6 +27,11 @@ export interface MatchRunSummary {
   matches: number;
   noMatches: number;
   skipped: number;
+  // SPRINT 016B — Property stage (runs after each Business MATCH).
+  propertyCandidates: number;
+  propertyMatches: number;
+  propertyNoMatches: number;
+  propertySkipped: number;
 }
 
 /** A Business Match plus the (denormalised) business name, for API/UI. */
@@ -28,6 +42,20 @@ export interface EnrichedMatch {
 
 export interface MatchDetail {
   match: BusinessMatchRecord;
+  business: BusinessRecord | null;
+  opportunity: OpportunityRecord | null;
+}
+
+/** A Property Match plus the (denormalised) property + business name, for API/UI. */
+export interface EnrichedPropertyMatch {
+  match: PropertyMatchRecord;
+  propertyName: string | null;
+  businessName: string | null;
+}
+
+export interface PropertyMatchDetail {
+  match: PropertyMatchRecord;
+  property: Property | null;
   business: BusinessRecord | null;
   opportunity: OpportunityRecord | null;
 }
@@ -76,6 +104,10 @@ export class MatchingCoordinator {
         matches: 0,
         noMatches: 0,
         skipped: 0,
+        propertyCandidates: 0,
+        propertyMatches: 0,
+        propertyNoMatches: 0,
+        propertySkipped: 0,
       };
 
       for (const opportunity of opportunities) {
@@ -96,7 +128,7 @@ export class MatchingCoordinator {
           }
           const rules = await this.deps.repo.listActiveRules(business.id);
           const result = matchBusiness({ message: signal.message }, rules);
-          await this.deps.repo.createMatch({
+          const businessMatch = await this.deps.repo.createMatch({
             workspaceId,
             businessId: business.id,
             opportunityId: opportunity.id,
@@ -104,8 +136,20 @@ export class MatchingCoordinator {
             reasons: result.reasons,
             matcherVersion: MATCHER_VERSION,
           });
-          if (result.decision === 'MATCH') summary.matches += 1;
-          else summary.noMatches += 1;
+          if (result.decision === 'MATCH') {
+            summary.matches += 1;
+            // Property stage — only for a Business MATCH.
+            await this.runPropertyStage(
+              workspaceId,
+              opportunity.id,
+              business.id,
+              businessMatch.id,
+              signal.message,
+              summary,
+            );
+          } else {
+            summary.noMatches += 1;
+          }
         }
       }
 
@@ -114,6 +158,63 @@ export class MatchingCoordinator {
     } finally {
       this.active.delete(workspaceId);
     }
+  }
+
+  /**
+   * Property stage (SPRINT 016B): after a Business MATCH, evaluate the Business's
+   * own active Properties and persist ONE deterministic result — the selected
+   * Property (MATCH) or a single NO_PROPERTY_MATCH row. Idempotent per Business
+   * Match. Never fabricates a Property; never touches another Business's data.
+   */
+  private async runPropertyStage(
+    workspaceId: string,
+    opportunityId: string,
+    businessId: string,
+    businessMatchId: string,
+    message: string | null,
+    summary: MatchRunSummary,
+  ): Promise<void> {
+    if (await this.deps.repo.propertyMatchExists(businessMatchId)) {
+      summary.propertySkipped += 1;
+      return;
+    }
+    const properties = await this.deps.repo.listActivePropertiesForBusiness(
+      businessId,
+      workspaceId,
+    );
+    const knownAreas = properties
+      .flatMap((p) => [p.location.area, p.location.district, p.location.province])
+      .filter((a): a is string => !!a && a.trim().length > 0);
+    const requirement = parsePropertyRequirement(message, knownAreas);
+    const selection = selectBestProperty(properties, requirement);
+    summary.propertyCandidates += selection.candidatesEvaluated;
+
+    const rejected = selection.evaluations
+      .filter((e) => e !== selection.selected)
+      .map((e) => ({
+        propertyId: e.property.id,
+        propertyName: e.property.name,
+        decision: e.decision,
+        reasons: e.reasons,
+      }));
+
+    await this.deps.repo.createPropertyMatch({
+      workspaceId,
+      opportunityId,
+      businessMatchId,
+      businessId,
+      propertyId: selection.selected?.property.id ?? null,
+      decision: selection.decision,
+      reasons: {
+        reasons: selection.reasons,
+        rejected,
+        requirement: requirement as unknown as Record<string, unknown>,
+      },
+      matcherVersion: PROPERTY_MATCHER_VERSION,
+      candidatesEvaluated: selection.candidatesEvaluated,
+    });
+    if (selection.decision === 'MATCH') summary.propertyMatches += 1;
+    else summary.propertyNoMatches += 1;
   }
 
   /** List matches (optionally filtered), enriched with business names. */
@@ -144,5 +245,56 @@ export class MatchingCoordinator {
       this.deps.repo.getOpportunityById(match.opportunityId),
     ]);
     return { match, business, opportunity };
+  }
+
+  // ── Property matches (SPRINT 016B) ─────────────────────────────────────────
+
+  /** List Property matches (optionally filtered), enriched with names. */
+  async listPropertyMatches(
+    workspaceId: string,
+    filter?: PropertyMatchFilter,
+  ): Promise<EnrichedPropertyMatch[]> {
+    this.assertWorkspace(workspaceId);
+    const matches = await this.deps.repo.listPropertyMatches(workspaceId, filter);
+    const propertyNames = new Map<string, string | null>();
+    const businessNames = new Map<string, string | null>();
+    const out: EnrichedPropertyMatch[] = [];
+    for (const match of matches) {
+      if (match.propertyId && !propertyNames.has(match.propertyId)) {
+        const p = await this.deps.repo.getPropertyById(match.propertyId);
+        propertyNames.set(match.propertyId, p ? p.name : null);
+      }
+      if (!businessNames.has(match.businessId)) {
+        const b = await this.deps.repo.getBusinessById(match.businessId);
+        businessNames.set(match.businessId, b ? b.name : null);
+      }
+      out.push({
+        match,
+        propertyName: match.propertyId ? (propertyNames.get(match.propertyId) ?? null) : null,
+        businessName: businessNames.get(match.businessId) ?? null,
+      });
+    }
+    return out;
+  }
+
+  /** Load one owned Property Match with its property, business, and opportunity. */
+  async getPropertyMatchDetail(workspaceId: string, id: string): Promise<PropertyMatchDetail> {
+    this.assertWorkspace(workspaceId);
+    const match = await this.deps.repo.getPropertyMatchById(id);
+    if (!match || match.workspaceId !== workspaceId) {
+      throw new MatchingError(MatchingErrorCode.MATCH_NOT_FOUND, 'Property match not found');
+    }
+    const [property, business, opportunity] = await Promise.all([
+      match.propertyId ? this.deps.repo.getPropertyById(match.propertyId) : Promise.resolve(null),
+      this.deps.repo.getBusinessById(match.businessId),
+      this.deps.repo.getOpportunityById(match.opportunityId),
+    ]);
+    return { match, property, business, opportunity };
+  }
+
+  /** The Property-match funnel aggregate for operations. */
+  async getFunnel(workspaceId: string): Promise<MatchingFunnelCounts> {
+    this.assertWorkspace(workspaceId);
+    return this.deps.repo.getFunnelCounts(workspaceId);
   }
 }

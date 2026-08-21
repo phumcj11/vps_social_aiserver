@@ -39,6 +39,34 @@ export interface DraftContext {
     sourceUrl: string;
     group: { name: string | null; url: string };
   };
+  /**
+   * SPRINT 016B — the selected Property + effective policies + approved contacts.
+   * `property` is null when there was NO_PROPERTY_MATCH (the Draft must then make
+   * NO Property-specific claim). Only persisted facts appear here; `mustNotClaim`
+   * lists what the Draft may never assert (availability/price/promotion/capacity
+   * plus prohibited claims), enforced by the policy checker.
+   */
+  property: {
+    name: string;
+    area: string | null;
+    propertyType: string | null;
+    maxGuests: number | null;
+    bedrooms: number | null;
+    amenities: string[];
+    priceFact: string | null;
+    sellingPoints: string[];
+  } | null;
+  policies: {
+    availabilityPolicy: string;
+    pricingPolicy: string;
+    promotionPolicy: string;
+    bookingPolicy: string;
+  } | null;
+  /** Contacts approved for drafts (enabled && approvedForDrafts) — safe projection. */
+  approvedContacts: { type: string; value: string; label: string | null }[];
+  mustNotClaim: string[];
+  /** True when a Business MATCH produced NO Property MATCH (review should flag it). */
+  noPropertyMatch: boolean;
 }
 
 /** A single layer of the layered prompt (system → context → task). */

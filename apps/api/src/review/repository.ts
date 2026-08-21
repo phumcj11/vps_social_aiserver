@@ -10,7 +10,10 @@ import type {
   OpportunityRecord,
   SignalRecord,
   FacebookGroupRecord,
+  PropertyMatchRecord,
 } from '../store/types';
+import type { BusinessPropertyStore } from '../business-property/store';
+import type { Property } from '../business-property/types';
 import { newId } from '../lib/tokens';
 import { ReviewError, ReviewErrorCode } from './errors';
 
@@ -23,13 +26,26 @@ import { ReviewError, ReviewErrorCode } from './errors';
  * persistence boundary — no Adapter and no HTTP layer touches the Store.
  */
 export class ReviewRepository {
-  constructor(private readonly store: Store) {}
+  constructor(
+    private readonly store: Store,
+    private readonly bpStore?: BusinessPropertyStore,
+  ) {}
+
+  async getPropertyById(id: string): Promise<Property | null> {
+    if (!this.bpStore) return null;
+    return this.bpStore.getPropertyById(id);
+  }
 
   async createTask(input: {
     workspaceId: string;
     businessMatchId: string;
     draftId: string;
     assignedTo: string | null;
+    // SPRINT 016B — immutable Property-match context snapshot (optional).
+    businessId?: string | null;
+    propertyId?: string | null;
+    propertyMatchId?: string | null;
+    contextHash?: string | null;
   }): Promise<ReviewTaskRecord> {
     try {
       return await this.store.createReviewTask({ id: newId(), ...input });
@@ -39,6 +55,11 @@ export class ReviewRepository {
         `Review task creation failed: ${(err as Error).message}`,
       );
     }
+  }
+
+  /** The persisted Property match for a Business Match (SPRINT 016B), if any. */
+  getPropertyMatchByBusinessMatch(businessMatchId: string): Promise<PropertyMatchRecord | null> {
+    return this.store.getPropertyMatchByBusinessMatch(businessMatchId);
   }
 
   getTaskById(id: string): Promise<ReviewTaskRecord | null> {

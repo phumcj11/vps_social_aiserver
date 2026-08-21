@@ -37,6 +37,37 @@ function statusColor(s: string): string {
   return '#b26a00';
 }
 
+/** Map a deterministic Property-match reason code to Thai. */
+function reasonThai(reason: string): string {
+  const [code, detail] = reason.split(':').map((s) => s.trim());
+  const label: Record<string, string> = {
+    AREA_MATCH: 'พื้นที่ตรงกัน',
+    CAPACITY_MATCH: 'รองรับจำนวนคนได้',
+    BEDROOMS_MATCH: 'จำนวนห้องนอนพอ',
+    TYPE_MATCH: 'ประเภทที่พักตรง',
+    PRIVATE_POOL_MATCH: 'มีสระส่วนตัว',
+    BEACH_MATCH: 'ติด/ใกล้ทะเล',
+    RIVER_MATCH: 'ริมแม่น้ำ',
+    AMENITY_MATCH: 'มีสิ่งอำนวยความสะดวกที่ขอ',
+  };
+  const base = label[code ?? ''] ?? reason;
+  return detail ? `${base} (${detail})` : base;
+}
+
+/** Map a reviewer warning code to Thai. */
+function warningThai(code: string): string {
+  const label: Record<string, string> = {
+    NO_PROPERTY_MATCH: 'ไม่พบที่พักที่ตรงกับคำขอ',
+    AVAILABILITY_UNVERIFIED: 'ห้องว่างยังไม่ได้ยืนยัน',
+    PRICE_UNAVAILABLE: 'ราคายังไม่พร้อมให้ระบุ',
+    CAPACITY_UNSUPPORTED: 'จำนวนผู้เข้าพักไม่มีข้อมูลรองรับ',
+    CONTACT_NOT_APPROVED: 'ช่องทางติดต่อยังไม่ได้อนุมัติ',
+    PROMOTION_UNSUPPORTED: 'โปรโมชั่นไม่มีข้อมูลรองรับ',
+    AMENITY_UNSUPPORTED: 'สิ่งอำนวยความสะดวกที่ขอไม่มีในที่พัก',
+  };
+  return label[code] ?? code;
+}
+
 export default function ReviewDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -48,6 +79,11 @@ export default function ReviewDetailPage() {
   const [business, setBusiness] = useState<BizView | null>(null);
   const [opportunity, setOpportunity] = useState<OppView | null>(null);
   const [presentation, setPresentation] = useState<ReviewPresentation | null>(null);
+  const [propertyMatch, setPropertyMatch] =
+    useState<Awaited<ReturnType<typeof api.getReview>>['propertyMatch']>(null);
+  const [property, setProperty] =
+    useState<Awaited<ReturnType<typeof api.getReview>>['property']>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [events, setEvents] = useState<ReviewEvent[]>([]);
   const [actionJob, setActionJob] = useState<ActionJob | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
@@ -63,6 +99,9 @@ export default function ReviewDetailPage() {
     setBusiness(res.business);
     setOpportunity(res.opportunity);
     setPresentation(res.presentation);
+    setPropertyMatch(res.propertyMatch);
+    setProperty(res.property);
+    setWarnings(res.warnings);
     setEvents(res.events);
     setEditText(res.review.editedContent ?? res.draft?.content ?? '');
     // Show an existing Action Job for this review, if any.
@@ -151,6 +190,68 @@ export default function ReviewDetailPage() {
         This is a human review of an AI-assisted draft. A decision is recorded here only — nothing
         is posted to Facebook.
       </p>
+
+      <section style={{ marginBottom: '1.25rem' }}>
+        <h2>การจับคู่ที่พัก (Property Match)</h2>
+        {propertyMatch && propertyMatch.decision === 'MATCH' && property ? (
+          <div
+            style={{
+              border: '1px solid #cfe8d4',
+              background: '#f3faf4',
+              borderRadius: 8,
+              padding: '0.75rem',
+            }}
+          >
+            <p style={{ margin: '0 0 0.25rem' }}>
+              ธุรกิจ: <strong>{business?.name ?? '—'}</strong>
+            </p>
+            <p style={{ margin: '0 0 0.5rem' }}>
+              ที่พักที่จับคู่: <strong>{property.name}</strong>
+              {property.area ? ` · ${property.area}` : ''}
+              {property.maxGuests != null ? ` · รองรับ ${property.maxGuests} คน` : ''}
+            </p>
+            <p style={{ margin: '0 0 0.25rem', fontWeight: 600 }}>เพราะ:</p>
+            <ul style={{ margin: '0 0 0.5rem', paddingLeft: '1.2rem' }}>
+              {propertyMatch.reasons
+                .filter((r) => r.includes('_MATCH'))
+                .map((r) => (
+                  <li key={r} style={{ color: '#0a7d28' }}>
+                    ✓ {reasonThai(r)}
+                  </li>
+                ))}
+            </ul>
+            <p style={{ margin: 0, fontSize: '0.85rem', color: '#666' }}>
+              ประเมิน {propertyMatch.candidatesEvaluated} ที่พัก · เวอร์ชัน{' '}
+              {propertyMatch.matcherVersion}
+            </p>
+          </div>
+        ) : (
+          <div
+            style={{
+              border: '1px solid #f0d58c',
+              background: '#fff8e1',
+              borderRadius: 8,
+              padding: '0.75rem',
+              color: '#5c4500',
+            }}
+          >
+            ไม่พบที่พักที่ตรงกับคำขอนี้ (NO_PROPERTY_MATCH) — ตอบได้เฉพาะระดับธุรกิจ
+            ห้ามอ้างถึงที่พักเฉพาะ
+          </div>
+        )}
+        {warnings.length > 0 && (
+          <div style={{ marginTop: '0.6rem' }}>
+            <p style={{ margin: '0 0 0.25rem', fontWeight: 600, color: '#b26a00' }}>คำเตือน:</p>
+            <ul style={{ margin: 0, paddingLeft: '1.2rem' }}>
+              {warnings.map((w) => (
+                <li key={w} style={{ color: '#b26a00' }}>
+                  ⚠ {warningThai(w)}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
 
       <section style={{ marginBottom: '1.25rem' }}>
         <h2>Decision</h2>

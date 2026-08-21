@@ -19,6 +19,7 @@ import {
   opportunities,
   opportunityEvents,
   businessMatches,
+  propertyMatches,
   aiDrafts,
   aiDraftEvents,
   reviewTasks,
@@ -84,6 +85,13 @@ import type {
   MatchReason,
   CreateBusinessMatchInput,
   BusinessMatchFilter,
+  PropertyMatchRecord,
+  PropertyMatchReasons,
+  PropertyMatchRejection,
+  CreatePropertyMatchInput,
+  PropertyMatchFilter,
+  PropertyMatchDecision,
+  MatchingFunnelCounts,
   AiDraftRecord,
   AiDraftStatus,
   CreateAiDraftInput,
@@ -1467,6 +1475,173 @@ export class DrizzleStore implements Store {
     };
   }
 
+  // ── Property matches (SPRINT 016B) ─────────────────────────────────────────
+
+  async createPropertyMatch(input: CreatePropertyMatchInput): Promise<PropertyMatchRecord> {
+    await this.db.insert(propertyMatches).values({
+      id: input.id,
+      workspaceId: input.workspaceId,
+      opportunityId: input.opportunityId,
+      businessMatchId: input.businessMatchId,
+      businessId: input.businessId,
+      propertyId: input.propertyId,
+      decision: input.decision,
+      reasons: JSON.stringify(input.reasons),
+      matcherVersion: input.matcherVersion,
+      candidatesEvaluated: input.candidatesEvaluated,
+    });
+    const created = await this.getPropertyMatchById(input.id);
+    if (!created) throw new Error('property match creation failed');
+    return created;
+  }
+
+  async getPropertyMatchById(id: string): Promise<PropertyMatchRecord | null> {
+    const rows = await this.db
+      .select()
+      .from(propertyMatches)
+      .where(eq(propertyMatches.id, id))
+      .limit(1);
+    return rows[0] ? this.toPropertyMatch(rows[0]) : null;
+  }
+
+  async getPropertyMatchByBusinessMatch(
+    businessMatchId: string,
+  ): Promise<PropertyMatchRecord | null> {
+    const rows = await this.db
+      .select()
+      .from(propertyMatches)
+      .where(eq(propertyMatches.businessMatchId, businessMatchId))
+      .limit(1);
+    return rows[0] ? this.toPropertyMatch(rows[0]) : null;
+  }
+
+  async listPropertyMatchesByWorkspace(
+    workspaceId: string,
+    filter: PropertyMatchFilter = {},
+  ): Promise<PropertyMatchRecord[]> {
+    const conds = [eq(propertyMatches.workspaceId, workspaceId)];
+    if (filter.opportunityId) conds.push(eq(propertyMatches.opportunityId, filter.opportunityId));
+    if (filter.businessId) conds.push(eq(propertyMatches.businessId, filter.businessId));
+    if (filter.businessMatchId)
+      conds.push(eq(propertyMatches.businessMatchId, filter.businessMatchId));
+    if (filter.propertyId) conds.push(eq(propertyMatches.propertyId, filter.propertyId));
+    if (filter.decision) conds.push(eq(propertyMatches.decision, filter.decision));
+    const rows = await this.db
+      .select()
+      .from(propertyMatches)
+      .where(and(...conds))
+      .orderBy(desc(propertyMatches.evaluatedAt))
+      .limit(filter.limit ?? 500);
+    return rows.map((r) => this.toPropertyMatch(r));
+  }
+
+  async getMatchingFunnelCounts(workspaceId: string): Promise<MatchingFunnelCounts> {
+    const bmRows = await this.db
+      .select({ decision: businessMatches.decision, n: sql<number>`count(*)` })
+      .from(businessMatches)
+      .where(eq(businessMatches.workspaceId, workspaceId))
+      .groupBy(businessMatches.decision);
+    const pmRows = await this.db
+      .select({
+        decision: propertyMatches.decision,
+        n: sql<number>`count(*)`,
+        evaluated: sql<number>`coalesce(sum(${propertyMatches.candidatesEvaluated}), 0)`,
+      })
+      .from(propertyMatches)
+      .where(eq(propertyMatches.workspaceId, workspaceId))
+      .groupBy(propertyMatches.decision);
+    const distinctRows = await this.db
+      .select({ n: sql<number>`count(distinct ${propertyMatches.propertyId})` })
+      .from(propertyMatches)
+      .where(
+        and(eq(propertyMatches.workspaceId, workspaceId), eq(propertyMatches.decision, 'MATCH')),
+      );
+
+    const businessMatch = { MATCH: 0, NO_MATCH: 0 };
+    for (const r of bmRows) {
+      if (r.decision === 'MATCH') businessMatch.MATCH = Number(r.n);
+      else if (r.decision === 'NO_MATCH') businessMatch.NO_MATCH = Number(r.n);
+    }
+    const propertyMatch = { MATCH: 0, NO_MATCH: 0 };
+    let candidatesEvaluated = 0;
+    for (const r of pmRows) {
+      candidatesEvaluated += Number(r.evaluated);
+      if (r.decision === 'MATCH') propertyMatch.MATCH = Number(r.n);
+      else if (r.decision === 'NO_MATCH') propertyMatch.NO_MATCH = Number(r.n);
+    }
+
+    // Top NO_MATCH reasons — parse the JSON reasons of NO_MATCH rows and tally.
+    const noMatchRows = await this.db
+      .select({ reasons: propertyMatches.reasons })
+      .from(propertyMatches)
+      .where(
+        and(eq(propertyMatches.workspaceId, workspaceId), eq(propertyMatches.decision, 'NO_MATCH')),
+      )
+      .limit(1000);
+    const reasonTally = new Map<string, number>();
+    for (const row of noMatchRows) {
+      for (const reason of this.parsePropertyReasons(row.reasons).reasons) {
+        const code = (reason.split(':')[0] ?? reason).trim();
+        reasonTally.set(code, (reasonTally.get(code) ?? 0) + 1);
+      }
+    }
+    const topNoMatchReasons = Array.from(reasonTally.entries())
+      .map(([reason, count]) => ({ reason, count }))
+      .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason))
+      .slice(0, 10);
+
+    return {
+      businessMatch,
+      propertyMatch,
+      candidatesEvaluated,
+      propertiesReceivingMatches: Number(distinctRows[0]?.n ?? 0),
+      // A Business MATCH funnels to exactly one property_match; NO_MATCH ones are the gap.
+      businessMatchWithNoPropertyMatch: propertyMatch.NO_MATCH,
+      topNoMatchReasons,
+    };
+  }
+
+  private parsePropertyReasons(raw: string | null): PropertyMatchReasons {
+    const empty: PropertyMatchReasons = { reasons: [], rejected: [], requirement: {} };
+    if (!raw) return empty;
+    try {
+      const parsed = JSON.parse(raw) as Partial<PropertyMatchReasons>;
+      const reasons = Array.isArray(parsed.reasons)
+        ? parsed.reasons.filter((r): r is string => typeof r === 'string')
+        : [];
+      const rejected = Array.isArray(parsed.rejected)
+        ? (parsed.rejected.filter(
+            (r) =>
+              !!r &&
+              typeof r === 'object' &&
+              typeof (r as PropertyMatchRejection).propertyId === 'string',
+          ) as PropertyMatchRejection[])
+        : [];
+      const requirement =
+        parsed.requirement && typeof parsed.requirement === 'object' ? parsed.requirement : {};
+      return { reasons, rejected, requirement: requirement as Record<string, unknown> };
+    } catch {
+      return empty;
+    }
+  }
+
+  private toPropertyMatch(row: typeof propertyMatches.$inferSelect): PropertyMatchRecord {
+    return {
+      id: row.id,
+      workspaceId: row.workspaceId,
+      opportunityId: row.opportunityId,
+      businessMatchId: row.businessMatchId,
+      businessId: row.businessId,
+      propertyId: row.propertyId ?? null,
+      decision: row.decision as PropertyMatchDecision,
+      reasons: this.parsePropertyReasons(row.reasons),
+      matcherVersion: row.matcherVersion,
+      candidatesEvaluated: row.candidatesEvaluated,
+      evaluatedAt: row.evaluatedAt,
+      createdAt: row.createdAt,
+    };
+  }
+
   // ── AI drafts (SPRINT 009) ─────────────────────────────────────────────────
 
   async createAiDraft(input: CreateAiDraftInput): Promise<AiDraftRecord> {
@@ -1628,6 +1803,10 @@ export class DrizzleStore implements Store {
       draftId: input.draftId,
       status: 'PENDING',
       assignedTo: input.assignedTo,
+      businessId: input.businessId ?? null,
+      propertyId: input.propertyId ?? null,
+      propertyMatchId: input.propertyMatchId ?? null,
+      contextHash: input.contextHash ?? null,
     });
     const created = await this.getReviewTaskById(input.id);
     if (!created) throw new Error('review task creation failed');
@@ -1722,6 +1901,10 @@ export class DrizzleStore implements Store {
       decidedBy: row.decidedBy,
       decidedAt: row.decidedAt,
       decisionReason: row.decisionReason,
+      businessId: row.businessId ?? null,
+      propertyId: row.propertyId ?? null,
+      propertyMatchId: row.propertyMatchId ?? null,
+      contextHash: row.contextHash ?? null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };

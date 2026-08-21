@@ -209,17 +209,18 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     env,
     logger,
   });
+  const bpStore = deps.bpStore ?? new InMemoryBusinessPropertyStore();
   const matching = new MatchingCoordinator({
-    repo: new MatchRepository(store),
+    repo: new MatchRepository(store, bpStore),
     logger,
   });
   const aiDrafts = new AiDraftCoordinator({
-    repo: new AiDraftRepository(store),
+    repo: new AiDraftRepository(store, bpStore),
     provider: selectAiDraftProvider(env),
     env,
     logger,
   });
-  const reviewRepo = new ReviewRepository(store);
+  const reviewRepo = new ReviewRepository(store, bpStore);
   const reviews = new ReviewCoordinator({
     repo: reviewRepo,
     queue: new ReviewQueue(reviewRepo),
@@ -265,7 +266,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   registerBusinessRoutes(app, { store, env, logger });
   registerBusinessPropertyRoutes(app, {
     store,
-    bpStore: deps.bpStore ?? new InMemoryBusinessPropertyStore(),
+    bpStore,
     env,
     logger,
   });
