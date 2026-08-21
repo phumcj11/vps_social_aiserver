@@ -79,7 +79,12 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   const { store, env } = deps;
   const logger = deps.logger ?? createLogger('info');
 
-  const app = Fastify({ logger: false, trustProxy: false });
+  // Trust ONLY a loopback reverse proxy (Caddy on 127.0.0.1) so X-Forwarded-For /
+  // X-Forwarded-Proto are honored in production while remaining unspoofable: the
+  // API binds to loopback and is reachable only through the local proxy. Without
+  // this, every client collapses to 127.0.0.1 and per-IP auth rate-limiting (which
+  // keys on req.ip) would degrade to a single global bucket. (SPRINT 017 deploy.)
+  const app = Fastify({ logger: false, trustProxy: 'loopback' });
 
   // Tolerate empty JSON bodies (e.g. bodyless POSTs like connect/start) — an
   // empty body parses to `undefined` rather than raising a parse error.
