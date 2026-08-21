@@ -198,6 +198,15 @@ export function registerReviewRoutes(app: FastifyInstance, deps: ReviewRouteDeps
         ),
         property: publicReviewProperty(d.property),
         warnings: d.warnings,
+        // SPRINT 017 — the approved contact(s) the draft may use.
+        approvedContacts: d.approvedContacts.map((c) => ({
+          type: c.type,
+          value: c.value,
+          label: c.label,
+          approvedForDrafts: c.approvedForDrafts,
+          approvedForPublicResponse: c.approvedForPublicResponse,
+          ownerVerified: c.ownerVerifiedAt != null,
+        })),
       };
     } catch (err) {
       toHttp(err);

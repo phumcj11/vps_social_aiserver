@@ -153,4 +153,44 @@ describe('Review Property-match snapshot (SPRINT 016B)', () => {
     // The draft policyResult carried NO_PROPERTY_MATCH → surfaced as a warning.
     expect(detail.warnings).toContain('NO_PROPERTY_MATCH');
   });
+
+  it('surfaces ONLY the approved contact in the Review, hiding unapproved/disabled', async () => {
+    const store = new InMemoryStore();
+    const bp = new InMemoryBusinessPropertyStore();
+    const reviews = coordinator(store, bp);
+    const { ws, business, draft } = await seed(store, bp);
+
+    // An approved LINE OA, a not-approved phone, and a disabled email.
+    const approved = await bp.createContact({
+      id: randomUUID(),
+      workspaceId: ws,
+      businessId: business.id,
+      type: 'LINE_OA',
+      value: '@demo-bangsaen',
+    });
+    await bp.updateContact(approved.id, { approvedForDrafts: true, ownerVerified: true });
+    const notApproved = await bp.createContact({
+      id: randomUUID(),
+      workspaceId: ws,
+      businessId: business.id,
+      type: 'PHONE',
+      value: '0899999999',
+    });
+    void notApproved;
+    const disabled = await bp.createContact({
+      id: randomUUID(),
+      workspaceId: ws,
+      businessId: business.id,
+      type: 'EMAIL',
+      value: 'x@example.com',
+    });
+    await bp.updateContact(disabled.id, { approvedForDrafts: true });
+    await bp.setContactEnabled(disabled.id, false);
+
+    const { task } = await reviews.enqueue(ws, draft.id, null);
+    const detail = await reviews.getDetail(ws, task.id);
+    expect(detail.approvedContacts).toHaveLength(1);
+    expect(detail.approvedContacts[0]?.value).toBe('@demo-bangsaen');
+    expect(detail.approvedContacts[0]?.type).toBe('LINE_OA');
+  });
 });

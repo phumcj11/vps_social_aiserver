@@ -32,18 +32,20 @@ export function Nav({ email }: { email?: string }) {
         flexWrap: 'wrap',
       }}
     >
-      <a href="/dashboard">Dashboard</a>
+      {/* Owner-facing (Thai-first) */}
+      <a href="/dashboard">หน้าหลัก</a>
       <a href="/settings/businesses">ธุรกิจของฉัน</a>
-      <a href="/businesses">Businesses</a>
+      <a href="/settings/businesses/matches">ผลการจับคู่</a>
+      <a href="/settings/reviews">รายการรอตรวจ</a>
+      {/* Operator / advanced */}
       <a href="/settings/facebook">Facebook</a>
       <a href="/settings/facebook/groups">Groups</a>
       <a href="/settings/collector">Collector</a>
       <a href="/settings/opportunities">Opportunities</a>
       <a href="/settings/ai-drafts">AI Drafts</a>
-      <a href="/settings/reviews">Reviews</a>
       <a href="/settings/actions">Actions</a>
       <a href="/settings/operations">Operations</a>
-      <a href="/settings/workspace">Workspace Settings</a>
+      <a href="/settings/workspace">ตั้งค่า Workspace</a>
       <span style={{ marginLeft: 'auto', color: '#666' }}>{email ?? ''}</span>
       <button type="button" onClick={handleLogout}>
         Logout

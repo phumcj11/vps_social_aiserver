@@ -919,6 +919,15 @@ export const api = {
         bedrooms: number | null;
       } | null;
       warnings: string[];
+      // SPRINT 017 — approved contact(s) the draft may use.
+      approvedContacts: {
+        type: ContactChannelType;
+        value: string;
+        label: string | null;
+        approvedForDrafts: boolean;
+        approvedForPublicResponse: boolean;
+        ownerVerified: boolean;
+      }[];
     }>(`/reviews/${id}`, { method: 'GET' }),
   listPropertyMatches: (filter?: { opportunityId?: string; decision?: string }) => {
     const q = new URLSearchParams();

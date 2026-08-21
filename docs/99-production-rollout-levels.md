@@ -34,3 +34,9 @@ Future only. **Automatic public-group commenting is NOT implemented in this spri
 > derive only from an APPROVED Review, no production Facebook write is enabled,
 > and Action Jobs may additionally reference `property_match_id` / `property_id`
 > for traceability only. See [sprints/SPRINT-016B](sprints/SPRINT-016B-property-match-pipeline.md).
+
+> **SPRINT 017 note:** owner-facing UX polish only (onboarding checklist, labels,
+> readiness click-to-fix, match-summary page, review contact display, improved
+> deterministic Mock draft). It changes NO write/rollout semantics: no production
+> Facebook write, no new migration, Action Jobs still derive only from an APPROVED
+> Review. See [sprints/SPRINT-017](sprints/SPRINT-017-owner-ux-polish.md).

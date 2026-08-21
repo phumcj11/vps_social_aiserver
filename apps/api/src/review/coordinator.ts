@@ -10,7 +10,7 @@ import type {
   OpportunityRecord,
   PropertyMatchRecord,
 } from '../store/types';
-import type { Property } from '../business-property/types';
+import type { Property, ContactChannel } from '../business-property/types';
 import type { ReviewRepository } from './repository';
 import type { ReviewQueue } from './queue';
 import { ReviewEventType } from './queue';
@@ -39,6 +39,8 @@ export interface ReviewDetail {
   propertyMatch: PropertyMatchRecord | null;
   property: Property | null;
   warnings: string[];
+  // SPRINT 017 — the approved Contact(s) the Draft may use (enabled && approvedForDrafts).
+  approvedContacts: ContactChannel[];
 }
 
 export interface ReviewCoordinatorDeps {
@@ -141,6 +143,11 @@ export class ReviewCoordinator {
     const propertyId = task.propertyId ?? propertyMatch?.propertyId ?? null;
     const property = propertyId ? await this.deps.repo.getPropertyById(propertyId) : null;
     const warnings = this.deriveWarnings(propertyMatch, draft);
+    // SPRINT 017 — the approved contacts the draft may use (from the snapshotted business).
+    const businessId = task.businessId ?? match?.businessId ?? null;
+    const approvedContacts = businessId
+      ? await this.deps.repo.listApprovedContacts(businessId)
+      : [];
 
     return {
       task,
@@ -153,6 +160,7 @@ export class ReviewCoordinator {
       propertyMatch,
       property,
       warnings,
+      approvedContacts,
     };
   }
 

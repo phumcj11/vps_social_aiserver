@@ -29,6 +29,8 @@ import {
   PRICING_LABELS,
   PROMOTION_LABELS,
   BOOKING_LABELS,
+  PROPERTY_TYPE_ORDER,
+  PROPERTY_TYPE_LABELS,
 } from '../../../ui';
 
 const TABS = [
@@ -40,15 +42,6 @@ const TABS = [
   'เนื้อหา',
   'นโยบายเฉพาะ',
   'ความพร้อม',
-];
-const PROPERTY_TYPES = [
-  'pool_villa',
-  'house',
-  'condo',
-  'hotel_room',
-  'resort',
-  'homestay',
-  'other',
 ];
 const AMENITY_KEYS: Array<[string, string]> = [
   ['privatePool', 'สระว่ายน้ำส่วนตัว'],
@@ -185,9 +178,9 @@ export default function PropertyEditPage() {
               onChange={(e) => set('propertyType', e.target.value || null)}
             >
               <option value="">— เลือก —</option>
-              {PROPERTY_TYPES.map((t) => (
+              {PROPERTY_TYPE_ORDER.map((t) => (
                 <option key={t} value={t}>
-                  {t}
+                  {PROPERTY_TYPE_LABELS[t]}
                 </option>
               ))}
             </Select>

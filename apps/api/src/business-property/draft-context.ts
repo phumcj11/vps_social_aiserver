@@ -125,6 +125,10 @@ function amenityLabels(p: Property): string[] {
   if (a.beachfront) out.push('beachfront');
   if (a.nearBeach) out.push('near beach');
   if (a.riverfront) out.push('riverfront');
+  if (a.mountainView) out.push('mountain view');
+  if (a.karaoke) out.push('karaoke');
+  if (a.bbq) out.push('bbq');
+  if (a.kitchen) out.push('kitchen');
   if (a.wifi) out.push('wifi');
   if (a.parking) out.push('parking');
   out.push(...a.other);

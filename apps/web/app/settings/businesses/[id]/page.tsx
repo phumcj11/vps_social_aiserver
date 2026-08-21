@@ -15,10 +15,6 @@ import {
   type ReadinessVerdict,
   type BusinessAuditEvent,
   type Environment,
-  type AvailabilityPolicy,
-  type PricingPolicy,
-  type PromotionPolicy,
-  type BookingPolicy,
 } from '../../../../lib/api';
 import { Nav } from '../../../../components/Nav';
 import {
@@ -35,13 +31,19 @@ import {
   Tabs,
   ReadinessChecklist,
   StickyBar,
+  SaveStatus,
   colors,
-  AVAILABILITY_LABELS,
-  PRICING_LABELS,
-  PROMOTION_LABELS,
-  BOOKING_LABELS,
+  AVAILABILITY_OPTIONS,
+  PRICING_OPTIONS,
+  PROMOTION_OPTIONS,
+  BOOKING_OPTIONS,
   CONTACT_TYPE_LABELS,
+  CONTACT_APPROVAL_LABELS,
+  CONTACT_APPROVAL_HELP,
+  propertyTypeLabel,
+  type SaveState,
 } from '../ui';
+import { OnboardingChecklist } from '../onboarding';
 
 const TABS = [
   'ภาพรวม',
@@ -148,6 +150,10 @@ export default function BusinessDetailPage() {
 
       {tab === 'ภาพรวม' && (
         <Section>
+          <OnboardingChecklist
+            input={{ business, profile, policies, contacts, properties, readiness }}
+            onGo={setTab}
+          />
           <Card>
             <p>
               ที่พักทั้งหมด: {properties.length} · เปิดใช้งาน:{' '}
@@ -191,10 +197,12 @@ export default function BusinessDetailPage() {
 
       {tab === 'ความพร้อมใช้งาน' && (
         <Section title="ความพร้อมใช้งาน (Business Readiness)">
-          {readiness ? <ReadinessChecklist missing={readiness.missing} /> : <p>—</p>}
-          <p style={{ fontSize: '0.85rem', color: colors.muted }}>
-            แต่ละรายการที่ขาดสามารถแก้ไขได้ในแท็บ ข้อมูลธุรกิจ / ช่องทางติดต่อ / นโยบาย / ที่พัก
-          </p>
+          {readiness ? <ReadinessChecklist missing={readiness.missing} onFix={setTab} /> : <p>—</p>}
+          {readiness?.ready && (
+            <p style={{ fontSize: '0.85rem', color: colors.muted }}>
+              ธุรกิจของคุณพร้อมใช้งานจริงแล้ว 🎉
+            </p>
+          )}
         </Section>
       )}
 
@@ -246,13 +254,25 @@ function PropertiesTab({
     });
     await onChange();
   }
+  const hasAny = properties.length > 0;
   return (
     <Section title="ที่พัก / บ้าน">
       <Link href={`/settings/businesses/${businessId}/properties/new`}>
-        <Button kind="primary">+ เพิ่มที่พัก</Button>
+        <Button kind="primary">{hasAny ? '+ เพิ่มที่พัก' : 'เพิ่มที่พักแรก'}</Button>
       </Link>
       <div style={{ marginTop: '0.75rem' }}>
-        {properties.length === 0 && <p style={{ color: colors.muted }}>ยังไม่มีที่พัก</p>}
+        {!hasAny && (
+          <Card>
+            <strong>ยังไม่มีที่พัก</strong>
+            <p style={{ color: colors.muted, margin: '0.35rem 0' }}>
+              เพิ่มบ้าน/ห้อง/แพพักที่คุณต้องการให้ระบบใช้ในการจับคู่ Lead
+              ระบบใช้ข้อมูลที่พักเพื่อเลือกบ้านที่เหมาะกับ Lead แต่ละราย
+            </p>
+            <Link href={`/settings/businesses/${businessId}/properties/new`}>
+              <Button kind="primary">เพิ่มที่พักแรก</Button>
+            </Link>
+          </Card>
+        )}
         {properties.map((p) => (
           <Card key={p.id}>
             <div
@@ -260,28 +280,40 @@ function PropertiesTab({
             >
               <strong>{p.name}</strong>
               <Badge
-                text={p.status}
+                text={
+                  p.status === 'active'
+                    ? 'เปิดใช้งาน'
+                    : p.status === 'archived'
+                      ? 'เก็บถาวร'
+                      : 'ปิดใช้งาน'
+                }
                 tone={p.status === 'active' ? 'ok' : p.status === 'archived' ? 'warn' : 'muted'}
               />
             </div>
             <div style={{ fontSize: '0.9rem', color: colors.muted }}>
-              {p.propertyType ?? '—'} · {p.location.area ?? p.location.province ?? '—'} ·
-              ผู้เข้าพักสูงสุด {p.capacity.maxGuests ?? '—'} · {p.capacity.bedrooms ?? '—'} ห้องนอน
+              {propertyTypeLabel(p.propertyType)} · {p.location.area ?? p.location.province ?? '—'}{' '}
+              · ผู้เข้าพักสูงสุด {p.capacity.maxGuests ?? '—'} · {p.capacity.bedrooms ?? '—'}{' '}
+              ห้องนอน
               {p.amenities.privatePool ? ' · สระส่วนตัว' : ''}
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
               <Link href={`/settings/businesses/${businessId}/properties/${p.id}`}>
                 <Button>แก้ไข</Button>
               </Link>
-              <Button onClick={() => duplicate(p)}>ทำสำเนา</Button>
+              <Button onClick={() => duplicate(p)}>ทำสำเนาเป็นแม่แบบ</Button>
               {p.status !== 'archived' && (
                 <Button kind="danger" onClick={() => archive(p.id)}>
-                  Archive
+                  เก็บถาวร
                 </Button>
               )}
             </div>
           </Card>
         ))}
+        {hasAny && (
+          <p style={{ fontSize: '0.85rem', color: colors.muted, marginTop: 6 }}>
+            เพิ่มที่พักอีกหลัง หรือไปที่แท็บ “ความพร้อมใช้งาน” เพื่อตรวจสอบความพร้อม
+          </p>
+        )}
       </div>
     </Section>
   );
@@ -303,19 +335,23 @@ function BusinessInfoTab({
   const [serviceArea, setServiceArea] = useState(profile?.serviceArea ?? '');
   const [responseTone, setResponseTone] = useState(profile?.responseTone ?? '');
   const [env, setEnv] = useState<Environment>(environment);
-  const [saving, setSaving] = useState(false);
+  const [saveState, setSaveState] = useState<SaveState>('idle');
 
   async function save() {
-    setSaving(true);
+    if (!name.trim()) {
+      setSaveState('invalid');
+      return;
+    }
+    setSaveState('saving');
     try {
       if (name !== business.name) await api.updateBusiness(business.id, { name });
       await api.updateProfile(business.id, { description, serviceArea, responseTone });
       if (env !== environment) await api.setBusinessEnvironment(business.id, env);
-      await onSaved('บันทึกแล้ว');
+      setSaveState('saved');
+      await onSaved('');
     } catch (err) {
-      await onSaved(err instanceof ApiRequestError ? err.message : 'บันทึกไม่สำเร็จ');
-    } finally {
-      setSaving(false);
+      setSaveState('error');
+      await onSaved(err instanceof ApiRequestError ? err.message : '');
     }
   }
 
@@ -324,17 +360,20 @@ function BusinessInfoTab({
       <Field label="ชื่อธุรกิจ">
         <Input value={name} onChange={(e) => setName(e.target.value)} />
       </Field>
-      <Field label="คำอธิบาย">
+      <Field label="คำอธิบาย (ไม่บังคับ)">
         <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
       </Field>
-      <Field label="พื้นที่ให้บริการ (จังหวัด/พื้นที่หลัก)">
+      <Field
+        label="พื้นที่ให้บริการ (จังหวัด/พื้นที่หลัก)"
+        hint="ใช้จับคู่ Lead ให้ตรงพื้นที่ที่คุณให้บริการ"
+      >
         <Input
           value={serviceArea}
           onChange={(e) => setServiceArea(e.target.value)}
           placeholder="เช่น บางแสน, ชลบุรี"
         />
       </Field>
-      <Field label="โทนการตอบลูกค้า">
+      <Field label="โทนการตอบลูกค้า" hint="ช่วยให้ระบบตอบด้วยน้ำเสียงที่ตรงกับแบรนด์ของคุณ">
         <Input
           value={responseTone}
           onChange={(e) => setResponseTone(e.target.value)}
@@ -348,9 +387,10 @@ function BusinessInfoTab({
         </Select>
       </Field>
       <StickyBar>
-        <Button kind="primary" onClick={save} disabled={saving}>
+        <Button kind="primary" onClick={save} disabled={saveState === 'saving'}>
           บันทึก
         </Button>
+        <SaveStatus state={saveState} />
       </StickyBar>
     </Section>
   );
@@ -402,28 +442,49 @@ function ContactsTab({
               <Badge text="ปิดใช้งาน" tone="muted" />
             )}
           </div>
-          <Toggle
-            checked={c.approvedForDrafts}
-            onChange={(v) => patch(c.id, { approvedForDrafts: v })}
-            label="อนุญาตใช้ใน Draft"
-          />
-          <Toggle
-            checked={c.approvedForPublicResponse}
-            onChange={(v) => patch(c.id, { approvedForPublicResponse: v })}
-            label="อนุญาตใช้ตอบสาธารณะ"
-          />
+          {/* Recommended owner flow: verify it is correct, then choose where it may be used. */}
           <Toggle
             checked={c.ownerVerifiedAt != null}
             onChange={(v) => patch(c.id, { ownerVerified: v })}
-            label="เจ้าของยืนยันแล้ว"
+            label={CONTACT_APPROVAL_LABELS.ownerVerified}
           />
+          <p style={{ fontSize: '0.78rem', color: colors.muted, margin: '0 0 6px 28px' }}>
+            {CONTACT_APPROVAL_HELP.ownerVerified}
+          </p>
+          <Toggle
+            checked={c.approvedForDrafts}
+            onChange={(v) => patch(c.id, { approvedForDrafts: v })}
+            label={CONTACT_APPROVAL_LABELS.approvedForDrafts}
+          />
+          <p style={{ fontSize: '0.78rem', color: colors.muted, margin: '0 0 6px 28px' }}>
+            {CONTACT_APPROVAL_HELP.approvedForDrafts}
+          </p>
+          <Toggle
+            checked={c.approvedForPublicResponse}
+            onChange={(v) => patch(c.id, { approvedForPublicResponse: v })}
+            label={CONTACT_APPROVAL_LABELS.approvedForPublicResponse}
+          />
+          <p style={{ fontSize: '0.78rem', color: colors.muted, margin: '0 0 6px 28px' }}>
+            {CONTACT_APPROVAL_HELP.approvedForPublicResponse}
+          </p>
           <Button onClick={() => patch(c.id, { enabled: !c.enabled })}>
-            {c.enabled ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
+            {c.enabled ? 'ปิดใช้งานช่องทางนี้' : CONTACT_APPROVAL_LABELS.enabled}
           </Button>
         </Card>
       ))}
+      {contacts.length === 0 && (
+        <Card>
+          <strong>ยังไม่มีช่องทางติดต่อ</strong>
+          <p style={{ color: colors.muted, margin: '0.35rem 0 0' }}>
+            เพิ่ม LINE, โทรศัพท์ หรือเว็บไซต์ ที่ระบบสามารถแนะนำให้ลูกค้าได้
+          </p>
+        </Card>
+      )}
       <Card>
         <strong>เพิ่มช่องทางติดต่อ</strong>
+        <p style={{ fontSize: '0.82rem', color: colors.muted, margin: '4px 0 8px' }}>
+          ขั้นตอนแนะนำ: 1) กรอกช่องทาง → 2) ยืนยันว่าถูกต้อง → 3) เลือกว่าจะให้ระบบใช้ที่ไหน
+        </p>
         <Field label="ประเภท">
           <Select value={type} onChange={(e) => setType(e.target.value as ContactChannelType)}>
             {(Object.keys(CONTACT_TYPE_LABELS) as ContactChannelType[]).map((t) => (
@@ -498,55 +559,31 @@ function PoliciesTab({
   }
 
   return (
-    <Section title="นโยบาย">
-      <Field label="นโยบายห้องว่าง">
-        <Select
-          value={p.availabilityPolicy}
-          onChange={(e) => setP({ ...p, availabilityPolicy: e.target.value as AvailabilityPolicy })}
-        >
-          {(Object.keys(AVAILABILITY_LABELS) as AvailabilityPolicy[]).map((k) => (
-            <option key={k} value={k}>
-              {AVAILABILITY_LABELS[k]}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <Field label="นโยบายราคา">
-        <Select
-          value={p.pricingPolicy}
-          onChange={(e) => setP({ ...p, pricingPolicy: e.target.value as PricingPolicy })}
-        >
-          {(Object.keys(PRICING_LABELS) as PricingPolicy[]).map((k) => (
-            <option key={k} value={k}>
-              {PRICING_LABELS[k]}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <Field label="นโยบายโปรโมชั่น">
-        <Select
-          value={p.promotionPolicy}
-          onChange={(e) => setP({ ...p, promotionPolicy: e.target.value as PromotionPolicy })}
-        >
-          {(Object.keys(PROMOTION_LABELS) as PromotionPolicy[]).map((k) => (
-            <option key={k} value={k}>
-              {PROMOTION_LABELS[k]}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <Field label="นโยบายการจอง">
-        <Select
-          value={p.bookingPolicy}
-          onChange={(e) => setP({ ...p, bookingPolicy: e.target.value as BookingPolicy })}
-        >
-          {(Object.keys(BOOKING_LABELS) as BookingPolicy[]).map((k) => (
-            <option key={k} value={k}>
-              {BOOKING_LABELS[k]}
-            </option>
-          ))}
-        </Select>
-      </Field>
+    <Section title="นโยบายการตอบลูกค้า">
+      <PolicyField
+        label="นโยบายห้องว่าง"
+        value={p.availabilityPolicy}
+        options={AVAILABILITY_OPTIONS}
+        onChange={(v) => setP({ ...p, availabilityPolicy: v })}
+      />
+      <PolicyField
+        label="นโยบายราคา"
+        value={p.pricingPolicy}
+        options={PRICING_OPTIONS}
+        onChange={(v) => setP({ ...p, pricingPolicy: v })}
+      />
+      <PolicyField
+        label="นโยบายโปรโมชั่น"
+        value={p.promotionPolicy}
+        options={PROMOTION_OPTIONS}
+        onChange={(v) => setP({ ...p, promotionPolicy: v })}
+      />
+      <PolicyField
+        label="นโยบายการจอง"
+        value={p.bookingPolicy}
+        options={BOOKING_OPTIONS}
+        onChange={(v) => setP({ ...p, bookingPolicy: v })}
+      />
       <Field label="ข้อความที่ห้ามกล่าวอ้าง (บรรทัดละ 1 รายการ)">
         <Textarea
           value={claims}
@@ -554,34 +591,47 @@ function PoliciesTab({
           placeholder="เช่น ห้ามยืนยันห้องว่าง&#10;ห้ามยืนยันราคา"
         />
       </Field>
-      <Field label="ผู้รับผิดชอบ">
+
+      {/* Readiness-required operational fields stay primary (not optional). */}
+      <Field label="ผู้รับผิดชอบ" hint="จำเป็นสำหรับความพร้อมใช้งาน">
         <Input
           value={p.responsibleOwner ?? ''}
           onChange={(e) => setP({ ...p, responsibleOwner: e.target.value || null })}
+          placeholder="เช่น คุณเมย์"
         />
       </Field>
-      <Field label="เวลาทำการ">
+      <Field label="เวลาทำการ" hint="จำเป็นสำหรับความพร้อมใช้งาน">
         <Input
           value={p.operatingHours ?? ''}
           onChange={(e) => setP({ ...p, operatingHours: e.target.value || null })}
           placeholder="เช่น 09:00-18:00"
         />
       </Field>
-      <Field label="เวลาตอบกลับสูงสุด (นาที)">
+      <Field label="เวลาตอบกลับสูงสุด (นาที)" hint="จำเป็นสำหรับความพร้อมใช้งาน">
         <Input
           type="number"
           value={p.responseSlaMinutes ?? ''}
           onChange={(e) =>
             setP({ ...p, responseSlaMinutes: e.target.value ? Number(e.target.value) : null })
           }
+          placeholder="เช่น 120"
         />
       </Field>
-      <Field label="นโยบายการยกระดับ/ติดต่อเจ้าของ">
-        <Input
-          value={p.escalationPolicy ?? ''}
-          onChange={(e) => setP({ ...p, escalationPolicy: e.target.value || null })}
-        />
-      </Field>
+
+      <details style={{ marginBottom: '0.75rem' }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
+          ข้อมูลเพิ่มเติม (ไม่บังคับ)
+        </summary>
+        <div style={{ marginTop: '0.5rem' }}>
+          <Field label="นโยบายการยกระดับ/ติดต่อเจ้าของ (ไม่บังคับ)">
+            <Input
+              value={p.escalationPolicy ?? ''}
+              onChange={(e) => setP({ ...p, escalationPolicy: e.target.value || null })}
+            />
+          </Field>
+        </div>
+      </details>
+
       {err && <p style={{ color: colors.danger }}>{err}</p>}
       <StickyBar>
         <Button kind="primary" onClick={save} disabled={saving}>
@@ -589,5 +639,38 @@ function PoliciesTab({
         </Button>
       </StickyBar>
     </Section>
+  );
+}
+
+/** A policy select with per-option Thai description + a recommended badge. */
+function PolicyField<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: { value: T; label: string; description: string; recommended?: boolean }[];
+  onChange: (v: T) => void;
+}) {
+  const selected = options.find((o) => o.value === value);
+  return (
+    <Field label={label}>
+      <Select value={value} onChange={(e) => onChange(e.target.value as T)}>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+            {o.recommended ? ' (แนะนำ)' : ''}
+          </option>
+        ))}
+      </Select>
+      {selected ? (
+        <span style={{ display: 'block', fontSize: '0.82rem', color: colors.muted, marginTop: 4 }}>
+          {selected.recommended ? '⭐ ' : ''}
+          {selected.description}
+        </span>
+      ) : null}
+    </Field>
   );
 }

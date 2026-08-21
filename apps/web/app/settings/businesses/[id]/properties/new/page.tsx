@@ -5,17 +5,18 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { api, ApiRequestError } from '../../../../../../lib/api';
 import { Nav } from '../../../../../../components/Nav';
-import { Page, Section, Field, Input, Textarea, Select, Button, colors } from '../../../ui';
-
-const PROPERTY_TYPES = [
-  'pool_villa',
-  'house',
-  'condo',
-  'hotel_room',
-  'resort',
-  'homestay',
-  'other',
-];
+import {
+  Page,
+  Section,
+  Field,
+  Input,
+  Textarea,
+  Select,
+  Button,
+  colors,
+  PROPERTY_TYPE_ORDER,
+  PROPERTY_TYPE_LABELS,
+} from '../../../ui';
 
 export default function NewPropertyPage() {
   const router = useRouter();
@@ -72,14 +73,14 @@ export default function NewPropertyPage() {
         <Field label="ประเภทที่พัก">
           <Select value={propertyType} onChange={(e) => setPropertyType(e.target.value)}>
             <option value="">— เลือก —</option>
-            {PROPERTY_TYPES.map((t) => (
+            {PROPERTY_TYPE_ORDER.map((t) => (
               <option key={t} value={t}>
-                {t}
+                {PROPERTY_TYPE_LABELS[t]}
               </option>
             ))}
           </Select>
         </Field>
-        <Field label="คำอธิบายสั้นๆ">
+        <Field label="คำอธิบายสั้นๆ (ไม่บังคับ)">
           <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
         {err && <p style={{ color: colors.danger }}>{err}</p>}

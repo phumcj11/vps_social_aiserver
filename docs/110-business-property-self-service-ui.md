@@ -85,3 +85,13 @@ backend work and were explicitly out of this frontend turn:
 - Human Review enhancement backend.
 
 These do not block owner self-service data entry, which is fully functional.
+
+## SPRINT 017 — Owner UX Polish (update)
+
+The self-service UI gained a guided onboarding checklist on the Business hub
+(`onboarding.tsx`, pure `computeOnboarding`), shared Thai property-type labels,
+readiness click-to-fix, plain-language contact-approval + policy guidance
+(recommended defaults; readiness-required operational fields kept primary),
+Thai empty/save states, and an owner-facing match-summary page
+(`/settings/businesses/matches`). Human Review now shows the approved contact.
+See [125](125-owner-onboarding-ux.md)–[130](130-review-one-screen-decision.md).

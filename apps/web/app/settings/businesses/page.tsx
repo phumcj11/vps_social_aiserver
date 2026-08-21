@@ -151,7 +151,8 @@ export default function BusinessesPage() {
       {rows.length === 0 ? (
         <Section>
           <div style={{ textAlign: 'center', padding: '2rem 0', color: colors.muted }}>
-            <p>ยังไม่มีธุรกิจจริง</p>
+            <p style={{ fontWeight: 600, color: '#111' }}>ยังไม่มีธุรกิจ</p>
+            <p>เพิ่มธุรกิจแรกของคุณเพื่อเริ่มตั้งค่าระบบ</p>
             <Link href="/settings/businesses/new">
               <Button kind="primary">เพิ่มธุรกิจแรก</Button>
             </Link>

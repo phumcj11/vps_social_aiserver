@@ -13,7 +13,7 @@ import type {
   PropertyMatchRecord,
 } from '../store/types';
 import type { BusinessPropertyStore } from '../business-property/store';
-import type { Property } from '../business-property/types';
+import type { Property, ContactChannel } from '../business-property/types';
 import { newId } from '../lib/tokens';
 import { ReviewError, ReviewErrorCode } from './errors';
 
@@ -34,6 +34,13 @@ export class ReviewRepository {
   async getPropertyById(id: string): Promise<Property | null> {
     if (!this.bpStore) return null;
     return this.bpStore.getPropertyById(id);
+  }
+
+  /** Draft-approved contacts for a Business (SPRINT 017) — enabled && approvedForDrafts. */
+  async listApprovedContacts(businessId: string): Promise<ContactChannel[]> {
+    if (!this.bpStore) return [];
+    const all = await this.bpStore.listContactsByBusiness(businessId);
+    return all.filter((c) => c.enabled && c.approvedForDrafts);
   }
 
   async createTask(input: {

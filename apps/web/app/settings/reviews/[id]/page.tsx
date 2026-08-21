@@ -54,6 +54,20 @@ function reasonThai(reason: string): string {
   return detail ? `${base} (${detail})` : base;
 }
 
+/** Map a contact channel type to Thai for the review contact card. */
+function contactTypeThai(type: string): string {
+  const map: Record<string, string> = {
+    PHONE: 'โทรศัพท์',
+    LINE_ID: 'LINE ID',
+    LINE_OA: 'LINE OA',
+    FACEBOOK_PAGE: 'เพจ Facebook',
+    WEBSITE: 'เว็บไซต์',
+    EMAIL: 'อีเมล',
+    OTHER: 'ช่องทาง',
+  };
+  return map[type] ?? type;
+}
+
 /** Map a reviewer warning code to Thai. */
 function warningThai(code: string): string {
   const label: Record<string, string> = {
@@ -84,6 +98,9 @@ export default function ReviewDetailPage() {
   const [property, setProperty] =
     useState<Awaited<ReturnType<typeof api.getReview>>['property']>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [approvedContacts, setApprovedContacts] = useState<
+    Awaited<ReturnType<typeof api.getReview>>['approvedContacts']
+  >([]);
   const [events, setEvents] = useState<ReviewEvent[]>([]);
   const [actionJob, setActionJob] = useState<ActionJob | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
@@ -102,6 +119,7 @@ export default function ReviewDetailPage() {
     setPropertyMatch(res.propertyMatch);
     setProperty(res.property);
     setWarnings(res.warnings);
+    setApprovedContacts(res.approvedContacts);
     setEvents(res.events);
     setEditText(res.review.editedContent ?? res.draft?.content ?? '');
     // Show an existing Action Job for this review, if any.
@@ -251,6 +269,37 @@ export default function ReviewDetailPage() {
             </ul>
           </div>
         )}
+
+        {/* SPRINT 017 — the exact approved contact the draft may use (question 7). */}
+        <div style={{ marginTop: '0.6rem' }}>
+          <p style={{ margin: '0 0 0.25rem', fontWeight: 600 }}>ช่องทางติดต่อที่จะใช้</p>
+          {approvedContacts.length === 0 ? (
+            <div style={{ color: '#b26a00' }}>⚠ ยังไม่มีช่องทางติดต่อที่ได้รับอนุญาต</div>
+          ) : (
+            approvedContacts.map((c) => (
+              <div
+                key={`${c.type}-${c.value}`}
+                style={{
+                  border: '1px solid #cfe8d4',
+                  background: '#f3faf4',
+                  borderRadius: 8,
+                  padding: '0.5rem 0.6rem',
+                  marginBottom: 6,
+                }}
+              >
+                <strong>
+                  {contactTypeThai(c.type)} {c.value}
+                </strong>
+                {c.label ? <span style={{ color: '#666' }}> · {c.label}</span> : null}
+                <div style={{ fontSize: '0.85rem', color: '#0a7d28' }}>
+                  ✓ อนุญาตใช้ใน Draft
+                  {c.approvedForPublicResponse ? ' · ✓ อนุญาตใช้ตอบสาธารณะ' : ''}
+                  {c.ownerVerified ? ' · ✓ เจ้าของยืนยันแล้ว' : ''}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </section>
 
       <section style={{ marginBottom: '1.25rem' }}>

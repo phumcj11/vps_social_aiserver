@@ -29,31 +29,57 @@ export class MockAiDraftProvider implements AiDraftProvider {
     await Promise.resolve();
     const b = context.business;
     const usedFields: string[] = ['business.name'];
+    const sentences: string[] = ['สวัสดีค่ะ'];
 
-    let serviceLine: string;
-    if (b.category) {
-      serviceLine = `ให้บริการด้าน${b.category}`;
-      usedFields.push('business.category');
-    } else if (b.sellingPoints.length > 0) {
-      serviceLine = `มีจุดเด่นเรื่อง${b.sellingPoints[0]}`;
-      usedFields.push('business.sellingPoints');
+    // SPRINT 017 — compose from the selected Property when there is a MATCH, using
+    // ONLY persisted facts. On NO_PROPERTY_MATCH, stay strictly business-level.
+    const p = context.noPropertyMatch ? null : context.property;
+    if (p) {
+      usedFields.push('property.name');
+      let intro = `จากข้อมูลที่แจ้งมา ${p.name} ของ ${b.name}`;
+      if (p.maxGuests != null) {
+        intro += ` รองรับได้สูงสุด ${p.maxGuests} ท่าน`;
+        usedFields.push('property.maxGuests');
+      }
+      const amenities = p.amenities.map(thaiAmenity).filter(Boolean);
+      if (amenities.length > 0) {
+        intro += ` และมี${amenities.join('และ')}`;
+        usedFields.push('property.amenities');
+      }
+      sentences.push(intro + 'ค่ะ');
+      // Price ONLY when the effective policy permitted it AND a number was stored.
+      if (p.priceFact) {
+        const num = p.priceFact.match(/(\d[\d,]*)/);
+        if (num) {
+          sentences.push(`ราคาเริ่มต้น ${num[1]} บาท`);
+          usedFields.push('property.priceFact');
+        }
+      }
     } else {
-      serviceLine = 'ยินดีให้บริการ';
+      // Business-level only — no property/price/availability claim.
+      const serviceLine = b.category
+        ? `ทาง ${b.name} ให้บริการด้าน${b.category}ค่ะ`
+        : `ทาง ${b.name} ยินดีให้บริการค่ะ`;
+      if (b.category) usedFields.push('business.category');
+      sentences.push(serviceLine);
     }
 
-    // Contact line uses ONLY business-provided contact; never invented.
-    let contactLine = '';
-    if (b.contactInformation && b.contactInformation.trim().length > 0) {
-      contactLine = ` ติดต่อสอบถามได้ที่ ${b.contactInformation.trim()}`;
+    // Contact: prefer an approved structured channel; fall back to the legacy
+    // free-text contact. NEVER invent a channel. NEVER assert availability.
+    const approved = context.approvedContacts[0];
+    let closing: string;
+    if (approved) {
+      usedFields.push('approvedContacts');
+      closing = `หากสนใจ สามารถสอบถามรายละเอียดเพิ่มเติมผ่าน ${thaiChannel(approved.type)} ${approved.value} ได้เลยค่ะ 😊`;
+    } else if (b.contactInformation && b.contactInformation.trim().length > 0) {
       usedFields.push('business.contactInformation');
+      closing = `หากสนใจ สามารถสอบถามรายละเอียดเพิ่มเติมได้ที่ ${b.contactInformation.trim()} ค่ะ 😊`;
+    } else {
+      closing = 'หากสนใจ สามารถสอบถามรายละเอียดเพิ่มเติมได้เลยนะคะ ทางเรายินดีให้ข้อมูลค่ะ 😊';
     }
+    sentences.push(closing);
 
-    // No guarantees of availability or price; an invitation to ask, only.
-    const parts = [
-      `สวัสดีค่ะ ทาง${b.name} ${serviceLine}ค่ะ`,
-      'หากสนใจ สามารถสอบถามรายละเอียดเพิ่มเติมได้เลยนะคะ ทางเรายินดีให้ข้อมูลค่ะ 😊',
-    ];
-    let content = parts.join(' ') + contactLine;
+    let content = sentences.join(' ');
     if (content.length > maxLength) content = content.slice(0, maxLength).trimEnd();
 
     return {
@@ -68,6 +94,36 @@ export class MockAiDraftProvider implements AiDraftProvider {
       },
     };
   }
+}
+
+/** Map a stored English amenity label to Thai for the deterministic mock draft. */
+function thaiAmenity(label: string): string {
+  const map: Record<string, string> = {
+    'private pool': 'สระส่วนตัว',
+    beachfront: 'ติดทะเล',
+    'near beach': 'ใกล้ทะเล',
+    riverfront: 'ริมแม่น้ำ',
+    wifi: 'Wi-Fi',
+    parking: 'ที่จอดรถ',
+    karaoke: 'คาราโอเกะ',
+    bbq: 'พื้นที่ BBQ',
+    kitchen: 'ครัว',
+  };
+  return map[label] ?? label;
+}
+
+/** Map a contact channel type to a short Thai label for the mock draft. */
+function thaiChannel(type: string): string {
+  const map: Record<string, string> = {
+    PHONE: 'โทร',
+    LINE_ID: 'LINE',
+    LINE_OA: 'LINE OA',
+    FACEBOOK_PAGE: 'เพจ Facebook',
+    WEBSITE: 'เว็บไซต์',
+    EMAIL: 'อีเมล',
+    OTHER: '',
+  };
+  return map[type] ?? '';
 }
 
 /**
