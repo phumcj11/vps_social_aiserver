@@ -407,97 +407,222 @@ export interface PolicyOption<T extends string> {
   description: string;
   recommended?: boolean;
 }
+// Owner-facing questions per policy group (SPRINT owner-setup corrective Phase E).
+export const POLICY_QUESTIONS = {
+  availability: 'เมื่อลูกค้าถามว่ามีห้องว่างไหม ให้ระบบตอบอย่างไร?',
+  pricing: 'ระบบสามารถพูดเรื่องราคาได้หรือไม่?',
+  promotion: 'ระบบสามารถพูดถึงโปรโมชั่นได้หรือไม่?',
+  booking: 'เมื่อลูกค้าสนใจ ให้แนะนำให้จองอย่างไร?',
+};
+
+// Recommended (safe) choice is listed first and marked; enums are unchanged.
 export const AVAILABILITY_OPTIONS: PolicyOption<AvailabilityPolicy>[] = [
   {
     value: 'MANUAL_CONFIRMATION',
-    label: AVAILABILITY_LABELS.MANUAL_CONFIRMATION,
-    description: 'ระบบจะไม่บอกว่าห้องว่างทันที แต่สามารถชวนลูกค้าติดต่อเพื่อตรวจสอบได้',
+    label: 'ให้ลูกค้าติดต่อเราเพื่อตรวจสอบ',
+    description: 'ระบบจะไม่ยืนยันว่าห้องว่างทันที',
     recommended: true,
   },
   {
+    value: 'DO_NOT_MENTION',
+    label: 'ไม่พูดเรื่องห้องว่างเลย',
+    description: 'ระบบจะไม่พูดถึงเรื่องห้องว่าง',
+  },
+  {
     value: 'OWNER_SYSTEM',
-    label: AVAILABILITY_LABELS.OWNER_SYSTEM,
-    description: 'ใช้เมื่อคุณมีระบบเช็คห้องว่างของตัวเอง',
+    label: 'ใช้ระบบเช็คห้องว่างของฉันเอง',
+    description: 'ใช้เมื่อคุณมีระบบของตัวเอง',
   },
   {
     value: 'EXTERNAL_CALENDAR',
-    label: AVAILABILITY_LABELS.EXTERNAL_CALENDAR,
-    description: 'ใช้เมื่อคุณจัดการห้องว่างผ่านปฏิทินภายนอก',
-  },
-  {
-    value: 'DO_NOT_MENTION',
-    label: AVAILABILITY_LABELS.DO_NOT_MENTION,
-    description: 'ระบบจะไม่พูดถึงเรื่องห้องว่างเลย',
+    label: 'ใช้ปฏิทินภายนอก',
+    description: 'ใช้เมื่อคุณจัดการผ่านปฏิทินภายนอก',
   },
 ];
 export const PRICING_OPTIONS: PolicyOption<PricingPolicy>[] = [
   {
-    value: 'STARTING_FROM',
-    label: PRICING_LABELS.STARTING_FROM,
-    description: 'ระบบพูดได้เฉพาะราคาเริ่มต้นที่คุณกรอกไว้',
+    value: 'DO_NOT_MENTION',
+    label: 'ไม่พูดราคา (ปลอดภัยที่สุด)',
+    description: 'ระบบจะไม่พูดถึงราคาเลย',
     recommended: true,
   },
   {
-    value: 'FIXED_REFERENCE',
-    label: PRICING_LABELS.FIXED_REFERENCE,
-    description: 'ระบบใช้ราคาอ้างอิงที่คุณกรอก (เช่น ราคาวันธรรมดา)',
+    value: 'STARTING_FROM',
+    label: 'บอกราคาเริ่มต้นที่ฉันกรอกไว้',
+    description: 'พูดได้เฉพาะราคาเริ่มต้นที่คุณกรอก',
   },
   {
     value: 'MANUAL_CONFIRMATION',
-    label: PRICING_LABELS.MANUAL_CONFIRMATION,
-    description: 'ระบบจะไม่ระบุราคา แต่ชวนลูกค้าสอบถามก่อน',
+    label: 'ต้องให้ฉันยืนยันราคาก่อน',
+    description: 'ระบบจะชวนลูกค้าสอบถามราคาก่อน',
   },
   {
-    value: 'DO_NOT_MENTION',
-    label: PRICING_LABELS.DO_NOT_MENTION,
-    description: 'ระบบจะไม่พูดถึงราคาเลย',
+    value: 'FIXED_REFERENCE',
+    label: 'ใช้ราคาอ้างอิงที่กรอกไว้',
+    description: 'ใช้ราคาอ้างอิง เช่น ราคาวันธรรมดา',
   },
 ];
 export const PROMOTION_OPTIONS: PolicyOption<PromotionPolicy>[] = [
   {
-    value: 'APPROVED_ONLY',
-    label: PROMOTION_LABELS.APPROVED_ONLY,
-    description: 'ระบบจะไม่สร้างโปรโมชั่นขึ้นเอง ใช้ได้เฉพาะที่คุณอนุมัติ',
+    value: 'NONE',
+    label: 'ไม่มีโปรโมชั่น',
+    description: 'ระบบจะไม่พูดถึงโปรโมชั่นใด ๆ',
     recommended: true,
   },
   {
-    value: 'NONE',
-    label: PROMOTION_LABELS.NONE,
-    description: 'ระบบจะไม่พูดถึงโปรโมชั่นใด ๆ',
+    value: 'APPROVED_ONLY',
+    label: 'ใช้เฉพาะโปรโมชั่นที่ฉันอนุมัติ',
+    description: 'ระบบจะไม่สร้างโปรโมชั่นขึ้นเอง',
   },
   {
     value: 'MANUAL_CONFIRMATION',
-    label: PROMOTION_LABELS.MANUAL_CONFIRMATION,
-    description: 'ระบบจะชวนลูกค้าสอบถามโปรโมชั่นกับเจ้าของก่อน',
+    label: 'ต้องยืนยันกับฉันก่อน',
+    description: 'ระบบจะชวนลูกค้าสอบถามกับเจ้าของก่อน',
   },
 ];
 export const BOOKING_OPTIONS: PolicyOption<BookingPolicy>[] = [
   {
-    value: 'LINE',
-    label: BOOKING_LABELS.LINE,
-    description: 'แนะนำให้ลูกค้าติดต่อผ่าน LINE ที่คุณอนุมัติไว้',
+    value: 'CONTACT_ONLY',
+    label: 'ติดต่อเรา',
+    description: 'แนะนำให้ลูกค้าติดต่อทั่วไป',
     recommended: true,
   },
-  {
-    value: 'PHONE',
-    label: BOOKING_LABELS.PHONE,
-    description: 'แนะนำให้ลูกค้าโทรติดต่อ',
-  },
-  {
-    value: 'WEBSITE',
-    label: BOOKING_LABELS.WEBSITE,
-    description: 'แนะนำให้ลูกค้าจองผ่านเว็บไซต์',
-  },
-  {
-    value: 'CONTACT_ONLY',
-    label: BOOKING_LABELS.CONTACT_ONLY,
-    description: 'แนะนำให้ลูกค้าติดต่อทั่วไป โดยไม่ระบุช่องทางเฉพาะ',
-  },
-  {
-    value: 'MANUAL',
-    label: BOOKING_LABELS.MANUAL,
-    description: 'คุณกำหนดวิธีการจองเอง',
-  },
+  { value: 'LINE', label: 'LINE', description: 'แนะนำให้ลูกค้าติดต่อผ่าน LINE ที่คุณอนุมัติไว้' },
+  { value: 'PHONE', label: 'โทรศัพท์', description: 'แนะนำให้ลูกค้าโทรติดต่อ' },
+  { value: 'WEBSITE', label: 'เว็บไซต์', description: 'แนะนำให้ลูกค้าจองผ่านเว็บไซต์' },
+  { value: 'MANUAL', label: 'กำหนดเอง', description: 'คุณกำหนดวิธีการจองเอง' },
+];
+
+// Response SLA: owner-friendly dropdown → the backend's minutes integer (Phase F).
+export const SLA_OPTIONS: { value: number; label: string }[] = [
+  { value: 5, label: '5 นาที' },
+  { value: 10, label: '10 นาที' },
+  { value: 15, label: '15 นาที' },
+  { value: 30, label: '30 นาที' },
+  { value: 60, label: '1 ชั่วโมง' },
+  { value: 120, label: '2 ชั่วโมง' },
+  { value: 480, label: 'ภายในวันเดียวกัน' },
+];
+
+// Recommended prohibited-claim presets (Phase G); owners may add custom lines too.
+export const PROHIBITED_CLAIM_PRESETS: string[] = [
+  'ห้ามยืนยันว่ามีห้องว่าง',
+  'ห้ามรับประกันราคาที่ยังไม่ได้ยืนยัน',
+  'ห้ามสร้างโปรโมชั่นขึ้นเอง',
+  'ห้ามกล่าวถึงสิ่งอำนวยความสะดวกที่ไม่ได้ระบุ',
+  'ห้ามรับประกันระยะทาง/ทำเลที่ไม่ได้บันทึกไว้',
+];
+
+// Escalation (Phase H) — owner question + simple recommended options.
+export const ESCALATION_DEFAULT = 'ให้ลูกค้าติดต่อผู้ดูแล';
+export const ESCALATION_OPTIONS: string[] = [
+  'ให้ลูกค้าติดต่อผู้ดูแล',
+  'ให้ลูกค้ารอเจ้าของติดต่อกลับ',
+];
+
+// ── Radio-card group: owner-friendly single choice (Phase E) ─────────────────
+export function RadioCards<T extends string>({
+  name,
+  value,
+  options,
+  onChange,
+}: {
+  name: string;
+  value: T;
+  options: PolicyOption<T>[];
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div role="radiogroup" style={{ display: 'grid', gap: 6 }}>
+      {options.map((o) => {
+        const selected = o.value === value;
+        return (
+          <label
+            key={o.value}
+            style={{
+              display: 'flex',
+              gap: 10,
+              alignItems: 'flex-start',
+              padding: '0.6rem 0.7rem',
+              border: `1px solid ${selected ? '#0a58ca' : colors.border}`,
+              background: selected ? '#eef4ff' : '#fff',
+              borderRadius: 8,
+              cursor: 'pointer',
+            }}
+          >
+            <input
+              type="radio"
+              name={name}
+              checked={selected}
+              onChange={() => onChange(o.value)}
+              style={{ width: 20, height: 20, marginTop: 2 }}
+            />
+            <span>
+              <span style={{ fontWeight: 600 }}>
+                {o.label}
+                {o.recommended ? <span style={{ color: colors.ok }}> · แนะนำ</span> : null}
+              </span>
+              <span style={{ display: 'block', fontSize: '0.82rem', color: colors.muted }}>
+                {o.description}
+              </span>
+            </span>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Service-area + operating-hours safe mapping to the single backend fields ──
+export function parseServiceArea(s: string | null | undefined): {
+  province: string;
+  primaryArea: string;
+} {
+  const raw = (s ?? '').trim();
+  if (!raw) return { province: '', primaryArea: '' };
+  const parts = raw
+    .split(/[,/]/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+  if (parts.length >= 2) return { primaryArea: parts[0]!, province: parts[1]! };
+  return { primaryArea: parts[0]!, province: '' };
+}
+export function composeServiceArea(province: string, primaryArea: string): string {
+  const p = primaryArea.trim();
+  const prov = province.trim();
+  return [p, prov].filter(Boolean).join(', ');
+}
+export function parseHours(s: string | null | undefined): { from: string; to: string } {
+  const m = (s ?? '').match(/(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/);
+  return m ? { from: m[1]!, to: m[2]! } : { from: '', to: '' };
+}
+export function composeHours(from: string, to: string): string | null {
+  if (from && to) return `${from}-${to}`;
+  return null;
+}
+/** Thai provinces for the จังหวัด selector (common tourist/accommodation ones first). */
+export const THAI_PROVINCES: string[] = [
+  'ชลบุรี',
+  'ระยอง',
+  'จันทบุรี',
+  'ตราด',
+  'เพชรบุรี',
+  'ประจวบคีรีขันธ์',
+  'ภูเก็ต',
+  'กระบี่',
+  'พังงา',
+  'สุราษฎร์ธานี',
+  'นครราชสีมา',
+  'เชียงใหม่',
+  'เชียงราย',
+  'กาญจนบุรี',
+  'ราชบุรี',
+  'สมุทรสงคราม',
+  'กรุงเทพมหานคร',
+  'นนทบุรี',
+  'พระนครศรีอยุธยา',
+  'เลย',
+  'นครศรีธรรมราช',
 ];
 
 // ── Contact approval plain-language labels + helpers (Phase E) ────────────────

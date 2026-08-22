@@ -9,6 +9,14 @@ import {
   CONTACT_APPROVAL_LABELS,
   AVAILABILITY_OPTIONS,
   PRICING_OPTIONS,
+  PROMOTION_OPTIONS,
+  BOOKING_OPTIONS,
+  SLA_OPTIONS,
+  PROHIBITED_CLAIM_PRESETS,
+  parseServiceArea,
+  composeServiceArea,
+  parseHours,
+  composeHours,
 } from '../app/settings/businesses/ui';
 
 const activeProp = {
@@ -125,5 +133,57 @@ describe('policy + contact guidance', () => {
   it('contact approvals use plain-language Thai labels', () => {
     expect(CONTACT_APPROVAL_LABELS.approvedForDrafts).toContain('ข้อความตอบ');
     expect(CONTACT_APPROVAL_LABELS.ownerVerified).toContain('ยืนยัน');
+  });
+});
+
+describe('owner-setup corrective (policy UX)', () => {
+  it('safe recommended defaults match the corrective (most-conservative first)', () => {
+    expect(AVAILABILITY_OPTIONS.find((o) => o.recommended)?.value).toBe('MANUAL_CONFIRMATION');
+    expect(PRICING_OPTIONS.find((o) => o.recommended)?.value).toBe('DO_NOT_MENTION');
+    expect(PROMOTION_OPTIONS.find((o) => o.recommended)?.value).toBe('NONE');
+    expect(BOOKING_OPTIONS.find((o) => o.recommended)?.value).toBe('CONTACT_ONLY');
+    // exactly one recommended per group
+    for (const g of [AVAILABILITY_OPTIONS, PRICING_OPTIONS, PROMOTION_OPTIONS, BOOKING_OPTIONS]) {
+      expect(g.filter((o) => o.recommended)).toHaveLength(1);
+    }
+  });
+
+  it('no policy option label is a raw snake_case enum token', () => {
+    // A raw enum token contains an underscore (MANUAL_CONFIRMATION, DO_NOT_MENTION);
+    // brand labels like "LINE" are legitimate owner-facing text.
+    for (const g of [AVAILABILITY_OPTIONS, PRICING_OPTIONS, PROMOTION_OPTIONS, BOOKING_OPTIONS]) {
+      for (const o of g) expect(o.label).not.toMatch(/_/);
+    }
+  });
+
+  it('SLA options map owner labels to the backend minutes integer', () => {
+    expect(SLA_OPTIONS.find((o) => o.label === '10 นาที')?.value).toBe(10);
+    expect(SLA_OPTIONS.find((o) => o.label === '1 ชั่วโมง')?.value).toBe(60);
+    expect(SLA_OPTIONS.find((o) => o.label === 'ภายในวันเดียวกัน')?.value).toBe(480);
+    for (const o of SLA_OPTIONS) expect(Number.isInteger(o.value) && o.value > 0).toBe(true);
+  });
+
+  it('provides the recommended prohibited-claim presets', () => {
+    expect(PROHIBITED_CLAIM_PRESETS).toContain('ห้ามยืนยันว่ามีห้องว่าง');
+    expect(PROHIBITED_CLAIM_PRESETS).toContain('ห้ามสร้างโปรโมชั่นขึ้นเอง');
+    expect(PROHIBITED_CLAIM_PRESETS.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('maps จังหวัด + พื้นที่หลัก to/from the single serviceArea field', () => {
+    expect(composeServiceArea('ชลบุรี', 'บางแสน')).toBe('บางแสน, ชลบุรี');
+    const p = parseServiceArea('บางแสน, ชลบุรี');
+    expect(p.primaryArea).toBe('บางแสน');
+    expect(p.province).toBe('ชลบุรี');
+    // Round-trips a single-token legacy value without loss.
+    expect(parseServiceArea('บางแสน').primaryArea).toBe('บางแสน');
+    expect(composeServiceArea('', '')).toBe('');
+  });
+
+  it('maps operating hours to/from a From–To pair', () => {
+    expect(composeHours('09:00', '18:00')).toBe('09:00-18:00');
+    expect(parseHours('09:00-18:00')).toEqual({ from: '09:00', to: '18:00' });
+    expect(parseHours('09:00 - 18:00')).toEqual({ from: '09:00', to: '18:00' });
+    expect(composeHours('', '')).toBeNull();
+    expect(parseHours(null)).toEqual({ from: '', to: '' });
   });
 });

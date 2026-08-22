@@ -112,7 +112,11 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   await app.register(cors, {
     origin: env.WEB_ORIGIN,
     credentials: true,
-    methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
+    // Every method the API serves must be advertised, or the browser blocks the
+    // real request at preflight. PUT drives the Business/Property policy saves and
+    // DELETE drives group/rule/knowledge removal; omitting them surfaced only as a
+    // generic "บันทึกไม่สำเร็จ" to the owner (owner-setup UX corrective).
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
 
   // Rate-limit foundation. Global disabled → applied only to routes that opt in

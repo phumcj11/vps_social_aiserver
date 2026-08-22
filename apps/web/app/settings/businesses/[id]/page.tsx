@@ -32,15 +32,26 @@ import {
   ReadinessChecklist,
   StickyBar,
   SaveStatus,
+  RadioCards,
   colors,
   AVAILABILITY_OPTIONS,
   PRICING_OPTIONS,
   PROMOTION_OPTIONS,
   BOOKING_OPTIONS,
+  POLICY_QUESTIONS,
+  SLA_OPTIONS,
+  PROHIBITED_CLAIM_PRESETS,
+  ESCALATION_DEFAULT,
+  ESCALATION_OPTIONS,
   CONTACT_TYPE_LABELS,
   CONTACT_APPROVAL_LABELS,
   CONTACT_APPROVAL_HELP,
   propertyTypeLabel,
+  parseServiceArea,
+  composeServiceArea,
+  parseHours,
+  composeHours,
+  THAI_PROVINCES,
   type SaveState,
 } from '../ui';
 import { OnboardingChecklist } from '../onboarding';
@@ -332,7 +343,9 @@ function BusinessInfoTab({
 }) {
   const [name, setName] = useState(business.name);
   const [description, setDescription] = useState(profile?.description ?? '');
-  const [serviceArea, setServiceArea] = useState(profile?.serviceArea ?? '');
+  const parsedArea = parseServiceArea(profile?.serviceArea);
+  const [province, setProvince] = useState(parsedArea.province);
+  const [primaryArea, setPrimaryArea] = useState(parsedArea.primaryArea);
   const [responseTone, setResponseTone] = useState(profile?.responseTone ?? '');
   const [env, setEnv] = useState<Environment>(environment);
   const [saveState, setSaveState] = useState<SaveState>('idle');
@@ -345,7 +358,12 @@ function BusinessInfoTab({
     setSaveState('saving');
     try {
       if (name !== business.name) await api.updateBusiness(business.id, { name });
-      await api.updateProfile(business.id, { description, serviceArea, responseTone });
+      await api.updateProfile(business.id, {
+        description,
+        // The two owner-facing fields map safely into the single serviceArea string.
+        serviceArea: composeServiceArea(province, primaryArea),
+        responseTone,
+      });
       if (env !== environment) await api.setBusinessEnvironment(business.id, env);
       setSaveState('saved');
       await onSaved('');
@@ -363,14 +381,27 @@ function BusinessInfoTab({
       <Field label="คำอธิบาย (ไม่บังคับ)">
         <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
       </Field>
+      <Field label="จังหวัด" hint="จังหวัดหลักที่คุณให้บริการ">
+        <Select value={province} onChange={(e) => setProvince(e.target.value)}>
+          <option value="">— เลือกจังหวัด —</option>
+          {THAI_PROVINCES.map((pv) => (
+            <option key={pv} value={pv}>
+              {pv}
+            </option>
+          ))}
+          {province && !THAI_PROVINCES.includes(province) && (
+            <option value={province}>{province}</option>
+          )}
+        </Select>
+      </Field>
       <Field
-        label="พื้นที่ให้บริการ (จังหวัด/พื้นที่หลัก)"
-        hint="ใช้จับคู่ Lead ให้ตรงพื้นที่ที่คุณให้บริการ"
+        label="พื้นที่หลัก"
+        hint="เช่น ตำบล/ย่าน ที่พักของคุณอยู่ — ใช้จับคู่ Lead ให้ตรงพื้นที่"
       >
         <Input
-          value={serviceArea}
-          onChange={(e) => setServiceArea(e.target.value)}
-          placeholder="เช่น บางแสน, ชลบุรี"
+          value={primaryArea}
+          onChange={(e) => setPrimaryArea(e.target.value)}
+          placeholder="เช่น บางแสน"
         />
       </Field>
       <Field label="โทนการตอบลูกค้า" hint="ช่วยให้ระบบตอบด้วยน้ำเสียงที่ตรงกับแบรนด์ของคุณ">
@@ -521,6 +552,8 @@ function PoliciesTab({
   policies: BusinessPolicies | null;
   onChange: () => Promise<void>;
 }) {
+  // Safe recommended defaults for a NEW business (visible to the owner).
+  const isNew = policies == null;
   const [p, setP] = useState<BusinessPolicies>(
     policies ?? {
       availabilityPolicy: 'MANUAL_CONFIRMATION',
@@ -529,93 +562,176 @@ function PoliciesTab({
       bookingPolicy: 'CONTACT_ONLY',
       cancellationInfoPolicy: null,
       prohibitedClaims: [],
-      escalationPolicy: null,
+      escalationPolicy: ESCALATION_DEFAULT,
       responsibleOwner: null,
       operatingHours: null,
-      responseSlaMinutes: null,
+      responseSlaMinutes: 10,
     },
   );
-  const [claims, setClaims] = useState((policies?.prohibitedClaims ?? []).join('\n'));
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  // Prohibited claims split into recommended presets (checkboxes) + custom lines.
+  const initialClaims = policies?.prohibitedClaims ?? [];
+  const [presetOn, setPresetOn] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(
+      // A new business starts with the safe presets checked; an existing one
+      // reflects exactly what was saved.
+      PROHIBITED_CLAIM_PRESETS.map((c) => [c, isNew ? true : initialClaims.includes(c)]),
+    ),
+  );
+  const [customClaims, setCustomClaims] = useState(
+    initialClaims.filter((c) => !PROHIBITED_CLAIM_PRESETS.includes(c)).join('\n'),
+  );
+  // Operating hours as From/To (no free typing of "09:00 - 18:00").
+  const initHours = parseHours(policies?.operatingHours);
+  const [fromT, setFromT] = useState(initHours.from);
+  const [toT, setToT] = useState(initHours.to);
+  const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [fieldErr, setFieldErr] = useState<string | null>(null);
+
+  function collectClaims(): string[] {
+    const presets = PROHIBITED_CLAIM_PRESETS.filter((c) => presetOn[c]);
+    const custom = customClaims
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return Array.from(new Set([...presets, ...custom]));
+  }
 
   async function save() {
-    setSaving(true);
-    setErr(null);
+    setFieldErr(null);
+    // Field-level validation with owner-friendly Thai messages (Phase J).
+    if (!p.responsibleOwner || !p.responsibleOwner.trim()) {
+      setFieldErr('กรุณาระบุผู้ดูแลลูกค้า');
+      setSaveState('invalid');
+      return;
+    }
+    if ((fromT && !toT) || (!fromT && toT)) {
+      setFieldErr('กรุณาระบุทั้งเวลาเริ่มต้นและเวลาสิ้นสุด');
+      setSaveState('invalid');
+      return;
+    }
+    if (fromT && toT && fromT >= toT) {
+      setFieldErr('เวลาเริ่มต้นต้องอยู่ก่อนเวลาสิ้นสุด');
+      setSaveState('invalid');
+      return;
+    }
+    setSaveState('saving');
     try {
       await api.putBusinessPolicies(businessId, {
         ...p,
-        prohibitedClaims: claims
-          .split('\n')
-          .map((s) => s.trim())
-          .filter(Boolean),
+        prohibitedClaims: collectClaims(),
+        operatingHours: composeHours(fromT, toT),
       });
+      setSaveState('saved');
       await onChange();
     } catch (e) {
-      setErr(e instanceof ApiRequestError ? e.message : 'บันทึกไม่สำเร็จ');
-    } finally {
-      setSaving(false);
+      // A genuine validation error from the API is shown; otherwise the safe generic.
+      if (e instanceof ApiRequestError && (e.status === 400 || e.status === 422)) {
+        setFieldErr('กรุณาตรวจสอบข้อมูลด้านล่าง');
+        setSaveState('invalid');
+      } else {
+        setFieldErr('ไม่สามารถบันทึกได้ กรุณาลองใหม่อีกครั้ง');
+        setSaveState('error');
+      }
     }
   }
 
   return (
     <Section title="นโยบายการตอบลูกค้า">
-      <PolicyField
-        label="นโยบายห้องว่าง"
-        value={p.availabilityPolicy}
-        options={AVAILABILITY_OPTIONS}
-        onChange={(v) => setP({ ...p, availabilityPolicy: v })}
-      />
-      <PolicyField
-        label="นโยบายราคา"
-        value={p.pricingPolicy}
-        options={PRICING_OPTIONS}
-        onChange={(v) => setP({ ...p, pricingPolicy: v })}
-      />
-      <PolicyField
-        label="นโยบายโปรโมชั่น"
-        value={p.promotionPolicy}
-        options={PROMOTION_OPTIONS}
-        onChange={(v) => setP({ ...p, promotionPolicy: v })}
-      />
-      <PolicyField
-        label="นโยบายการจอง"
-        value={p.bookingPolicy}
-        options={BOOKING_OPTIONS}
-        onChange={(v) => setP({ ...p, bookingPolicy: v })}
-      />
-      <Field label="ข้อความที่ห้ามกล่าวอ้าง (บรรทัดละ 1 รายการ)">
-        <Textarea
-          value={claims}
-          onChange={(e) => setClaims(e.target.value)}
-          placeholder="เช่น ห้ามยืนยันห้องว่าง&#10;ห้ามยืนยันราคา"
+      <Field label={POLICY_QUESTIONS.availability}>
+        <RadioCards
+          name="availability"
+          value={p.availabilityPolicy}
+          options={AVAILABILITY_OPTIONS}
+          onChange={(v) => setP({ ...p, availabilityPolicy: v })}
+        />
+      </Field>
+      <Field label={POLICY_QUESTIONS.pricing}>
+        <RadioCards
+          name="pricing"
+          value={p.pricingPolicy}
+          options={PRICING_OPTIONS}
+          onChange={(v) => setP({ ...p, pricingPolicy: v })}
+        />
+      </Field>
+      <Field label={POLICY_QUESTIONS.promotion}>
+        <RadioCards
+          name="promotion"
+          value={p.promotionPolicy}
+          options={PROMOTION_OPTIONS}
+          onChange={(v) => setP({ ...p, promotionPolicy: v })}
+        />
+      </Field>
+      <Field label={POLICY_QUESTIONS.booking}>
+        <RadioCards
+          name="booking"
+          value={p.bookingPolicy}
+          options={BOOKING_OPTIONS}
+          onChange={(v) => setP({ ...p, bookingPolicy: v })}
         />
       </Field>
 
-      {/* Readiness-required operational fields stay primary (not optional). */}
-      <Field label="ผู้รับผิดชอบ" hint="จำเป็นสำหรับความพร้อมใช้งาน">
+      <Field label="ผู้ดูแลลูกค้า" hint="คนที่รับช่วงต่อเมื่อลูกค้าต้องการคุยกับคนจริง">
         <Input
           value={p.responsibleOwner ?? ''}
           onChange={(e) => setP({ ...p, responsibleOwner: e.target.value || null })}
-          placeholder="เช่น คุณเมย์"
+          placeholder="เช่น คุณภูมิ"
         />
       </Field>
-      <Field label="เวลาทำการ" hint="จำเป็นสำหรับความพร้อมใช้งาน">
-        <Input
-          value={p.operatingHours ?? ''}
-          onChange={(e) => setP({ ...p, operatingHours: e.target.value || null })}
-          placeholder="เช่น 09:00-18:00"
-        />
+
+      <Field label="เวลาที่สะดวกตอบลูกค้า">
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Input
+            type="time"
+            value={fromT}
+            onChange={(e) => setFromT(e.target.value)}
+            style={{ width: 140 }}
+          />
+          <span>ถึง</span>
+          <Input
+            type="time"
+            value={toT}
+            onChange={(e) => setToT(e.target.value)}
+            style={{ width: 140 }}
+          />
+        </div>
       </Field>
-      <Field label="เวลาตอบกลับสูงสุด (นาที)" hint="จำเป็นสำหรับความพร้อมใช้งาน">
-        <Input
-          type="number"
+
+      <Field label="ปกติคุณสามารถตอบลูกค้าได้ภายใน">
+        <Select
           value={p.responseSlaMinutes ?? ''}
           onChange={(e) =>
             setP({ ...p, responseSlaMinutes: e.target.value ? Number(e.target.value) : null })
           }
-          placeholder="เช่น 120"
-        />
+        >
+          <option value="">— เลือก —</option>
+          {SLA_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </Select>
+      </Field>
+
+      <Field label="ข้อความที่ห้ามระบบพูด (เลือกได้หลายข้อ)">
+        <div style={{ display: 'grid', gap: 4 }}>
+          {PROHIBITED_CLAIM_PRESETS.map((c) => (
+            <Toggle
+              key={c}
+              checked={!!presetOn[c]}
+              onChange={(v) => setPresetOn({ ...presetOn, [c]: v })}
+              label={c}
+            />
+          ))}
+        </div>
+        <details style={{ marginTop: 6 }}>
+          <summary style={{ cursor: 'pointer', color: colors.muted }}>+ เพิ่มข้อห้ามอื่น</summary>
+          <Textarea
+            value={customClaims}
+            onChange={(e) => setCustomClaims(e.target.value)}
+            placeholder="พิมพ์ข้อห้ามเพิ่มเติม บรรทัดละ 1 รายการ"
+            style={{ marginTop: 6 }}
+          />
+        </details>
       </Field>
 
       <details style={{ marginBottom: '0.75rem' }}>
@@ -623,54 +739,49 @@ function PoliciesTab({
           ข้อมูลเพิ่มเติม (ไม่บังคับ)
         </summary>
         <div style={{ marginTop: '0.5rem' }}>
-          <Field label="นโยบายการยกระดับ/ติดต่อเจ้าของ (ไม่บังคับ)">
-            <Input
-              value={p.escalationPolicy ?? ''}
-              onChange={(e) => setP({ ...p, escalationPolicy: e.target.value || null })}
-            />
+          <Field label="เมื่อระบบตอบไม่ได้ ให้ทำอย่างไร?">
+            <Select
+              value={
+                ESCALATION_OPTIONS.includes(p.escalationPolicy ?? '')
+                  ? (p.escalationPolicy ?? '')
+                  : p.escalationPolicy
+                    ? '__custom__'
+                    : ESCALATION_DEFAULT
+              }
+              onChange={(e) =>
+                setP({
+                  ...p,
+                  escalationPolicy: e.target.value === '__custom__' ? '' : e.target.value,
+                })
+              }
+            >
+              {ESCALATION_OPTIONS.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                  {o === ESCALATION_DEFAULT ? ' (แนะนำ)' : ''}
+                </option>
+              ))}
+              <option value="__custom__">กำหนดเอง…</option>
+            </Select>
+            {!ESCALATION_OPTIONS.includes(p.escalationPolicy ?? '') && (
+              <Input
+                value={p.escalationPolicy ?? ''}
+                onChange={(e) => setP({ ...p, escalationPolicy: e.target.value || null })}
+                placeholder="ระบุวิธีที่ต้องการ"
+                style={{ marginTop: 6 }}
+              />
+            )}
           </Field>
         </div>
       </details>
 
-      {err && <p style={{ color: colors.danger }}>{err}</p>}
+      {fieldErr && <p style={{ color: colors.danger }}>{fieldErr}</p>}
       <StickyBar>
-        <Button kind="primary" onClick={save} disabled={saving}>
+        <Button kind="primary" onClick={save} disabled={saveState === 'saving'}>
           บันทึกนโยบาย
         </Button>
+        <SaveStatus state={saveState} message={fieldErr} />
       </StickyBar>
     </Section>
-  );
-}
-
-/** A policy select with per-option Thai description + a recommended badge. */
-function PolicyField<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: T;
-  options: { value: T; label: string; description: string; recommended?: boolean }[];
-  onChange: (v: T) => void;
-}) {
-  const selected = options.find((o) => o.value === value);
-  return (
-    <Field label={label}>
-      <Select value={value} onChange={(e) => onChange(e.target.value as T)}>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-            {o.recommended ? ' (แนะนำ)' : ''}
-          </option>
-        ))}
-      </Select>
-      {selected ? (
-        <span style={{ display: 'block', fontSize: '0.82rem', color: colors.muted, marginTop: 4 }}>
-          {selected.recommended ? '⭐ ' : ''}
-          {selected.description}
-        </span>
-      ) : null}
-    </Field>
   );
 }

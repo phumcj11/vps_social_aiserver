@@ -351,4 +351,78 @@ describe('policies + readiness + environment + audit', () => {
     expect(denied.statusCode).toBe(404);
     await app.close();
   });
+
+  it('saves a valid policy and reloads the exact persisted values (owner-setup corrective)', async () => {
+    const { app } = await makeTestApp();
+    const { token, businessId } = await withBusiness(app, 'policysave@example.com');
+    const body = {
+      availabilityPolicy: 'MANUAL_CONFIRMATION',
+      pricingPolicy: 'DO_NOT_MENTION',
+      promotionPolicy: 'NONE',
+      bookingPolicy: 'CONTACT_ONLY',
+      prohibitedClaims: ['ห้ามยืนยันว่ามีห้องว่าง', 'ห้ามสร้างโปรโมชั่นขึ้นเอง'],
+      responsibleOwner: 'คุณภูมิ',
+      operatingHours: '09:00-18:00',
+      responseSlaMinutes: 10,
+    };
+    const saved = await app.inject({
+      method: 'PUT',
+      url: `/businesses/${businessId}/policies`,
+      ...h(token, body),
+    });
+    expect(saved.statusCode).toBe(200);
+
+    const reloaded = await app.inject({
+      method: 'GET',
+      url: `/businesses/${businessId}/policies`,
+      headers: cookieHeader(token),
+    });
+    const p = reloaded.json().policies;
+    expect(p.availabilityPolicy).toBe('MANUAL_CONFIRMATION');
+    expect(p.pricingPolicy).toBe('DO_NOT_MENTION');
+    expect(p.responsibleOwner).toBe('คุณภูมิ');
+    expect(p.operatingHours).toBe('09:00-18:00');
+    expect(p.responseSlaMinutes).toBe(10); // SLA numeric mapping round-trips
+    expect(p.prohibitedClaims).toEqual(['ห้ามยืนยันว่ามีห้องว่าง', 'ห้ามสร้างโปรโมชั่นขึ้นเอง']);
+    await app.close();
+  });
+
+  it('accepts a blank/omitted escalation policy (optional)', async () => {
+    const { app } = await makeTestApp();
+    const { token, businessId } = await withBusiness(app, 'escalation@example.com');
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/businesses/${businessId}/policies`,
+      ...h(token, {
+        availabilityPolicy: 'MANUAL_CONFIRMATION',
+        pricingPolicy: 'DO_NOT_MENTION',
+        promotionPolicy: 'NONE',
+        bookingPolicy: 'CONTACT_ONLY',
+        prohibitedClaims: [],
+        escalationPolicy: null,
+      }),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().policies.escalationPolicy).toBeNull();
+    await app.close();
+  });
+
+  it('rejects an invalid SLA (non-positive) with a validation error, not a save', async () => {
+    const { app } = await makeTestApp();
+    const { token, businessId } = await withBusiness(app, 'badsla@example.com');
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/businesses/${businessId}/policies`,
+      ...h(token, {
+        availabilityPolicy: 'MANUAL_CONFIRMATION',
+        pricingPolicy: 'DO_NOT_MENTION',
+        promotionPolicy: 'NONE',
+        bookingPolicy: 'CONTACT_ONLY',
+        prohibitedClaims: [],
+        responseSlaMinutes: 0,
+      }),
+    });
+    expect(res.statusCode).toBe(400); // validation error (not a silent save)
+    await app.close();
+  });
 });
