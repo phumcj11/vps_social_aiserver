@@ -46,7 +46,6 @@ import {
   CONTACT_TYPE_LABELS,
   CONTACT_APPROVAL_LABELS,
   CONTACT_APPROVAL_HELP,
-  propertyTypeLabel,
   parseServiceArea,
   composeServiceArea,
   parseHours,
@@ -54,6 +53,7 @@ import {
   THAI_PROVINCES,
   type SaveState,
 } from '../ui';
+import { propertySummary } from '../property-ui';
 import { OnboardingChecklist } from '../onboarding';
 
 const TABS = [
@@ -301,12 +301,18 @@ function PropertiesTab({
                 tone={p.status === 'active' ? 'ok' : p.status === 'archived' ? 'warn' : 'muted'}
               />
             </div>
-            <div style={{ fontSize: '0.9rem', color: colors.muted }}>
-              {propertyTypeLabel(p.propertyType)} · {p.location.area ?? p.location.province ?? '—'}{' '}
-              · ผู้เข้าพักสูงสุด {p.capacity.maxGuests ?? '—'} · {p.capacity.bedrooms ?? '—'}{' '}
-              ห้องนอน
-              {p.amenities.privatePool ? ' · สระส่วนตัว' : ''}
-            </div>
+            {(() => {
+              const s = propertySummary(p);
+              const line1 = [s.typeLabel, s.area].filter(Boolean).join(' · ');
+              const line2 = [s.capacityLine, s.bedroomsLine].filter(Boolean).join(' · ');
+              return (
+                <div style={{ fontSize: '0.9rem', color: colors.muted }}>
+                  {line1 && <div>{line1}</div>}
+                  {line2 && <div>{line2}</div>}
+                  {s.amenityLine && <div>{s.amenityLine}</div>}
+                </div>
+              );
+            })()}
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
               <Link href={`/settings/businesses/${businessId}/properties/${p.id}`}>
                 <Button>แก้ไข</Button>

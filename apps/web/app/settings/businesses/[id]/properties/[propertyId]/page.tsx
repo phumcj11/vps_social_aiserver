@@ -5,7 +5,6 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   api,
-  ApiRequestError,
   type Property,
   type ReadinessVerdict,
   type EffectivePolicies,
@@ -24,6 +23,8 @@ import {
   Tabs,
   StickyBar,
   ReadinessChecklist,
+  SaveStatus,
+  type SaveState,
   colors,
   AVAILABILITY_LABELS,
   PRICING_LABELS,
@@ -31,7 +32,26 @@ import {
   BOOKING_LABELS,
   PROPERTY_TYPE_ORDER,
   PROPERTY_TYPE_LABELS,
+  THAI_PROVINCES,
 } from '../../../ui';
+import {
+  PRICE_MODE_OPTIONS,
+  PRICE_MODE_QUESTION,
+  toCanonicalPriceMode,
+  priceFieldsForMode,
+  formatBaht,
+  AMENITY_OPTIONS,
+  otherAmenities,
+  LOCATION_FIELDS,
+  LOCATION_HELP,
+  CAPACITY_FIELDS,
+  CAPACITY_HELP,
+  PROPERTY_TAB_GUIDANCE,
+  SAVE_MESSAGES,
+  saveErrorMessage,
+  propertyChanged,
+  type PriceDisplayMode,
+} from '../../../property-ui';
 
 const TABS = [
   'ข้อมูลทั่วไป',
@@ -43,16 +63,50 @@ const TABS = [
   'นโยบายเฉพาะ',
   'ความพร้อม',
 ];
-const AMENITY_KEYS: Array<[string, string]> = [
-  ['privatePool', 'สระว่ายน้ำส่วนตัว'],
-  ['wifi', 'Wi-Fi'],
-  ['parking', 'ที่จอดรถ'],
-  ['kitchen', 'ครัว'],
-  ['airConditioning', 'เครื่องปรับอากาศ'],
-  ['petFriendly', 'สัตว์เลี้ยงได้'],
-  ['bbq', 'พื้นที่ BBQ'],
-  ['karaoke', 'คาราโอเกะ'],
-];
+
+/** Snapshot of everything the save() sends, for no-change detection. */
+function saveSnapshot(p: Property) {
+  return {
+    name: p.name,
+    code: p.code,
+    propertyType: p.propertyType,
+    description: p.description,
+    location: p.location,
+    capacity: p.capacity,
+    amenities: p.amenities,
+    pricing: p.pricing,
+    content: p.content,
+    policyOverrides: p.policyOverrides,
+  };
+}
+
+/** Field-level Thai validation; empty object → valid. */
+function validate(p: Property): Record<string, string> {
+  const e: Record<string, string> = {};
+  if (!p.name.trim()) e.name = 'กรุณากรอกชื่อที่พัก';
+  if (p.capacity.maxGuests != null && p.capacity.maxGuests <= 0)
+    e.maxGuests = 'จำนวนผู้เข้าพักต้องมากกว่า 0';
+  for (const k of ['bedrooms', 'bathrooms', 'beds'] as const) {
+    const v = p.capacity[k];
+    if (v != null && v < 0) e[k] = 'ค่าต้องไม่ติดลบ';
+  }
+  for (const k of [
+    'startingPrice',
+    'weekdayPrice',
+    'weekendPrice',
+    'securityDeposit',
+    'extraGuestPrice',
+  ] as const) {
+    const v = p.pricing[k];
+    if (v != null && v < 0) e[k] = 'ราคาต้องไม่ติดลบ';
+  }
+  return e;
+}
+
+function Guidance({ text }: { text?: string }) {
+  if (!text) return null;
+  return <p style={{ fontSize: '0.85rem', color: colors.muted, margin: '0 0 0.75rem' }}>{text}</p>;
+}
 
 export default function PropertyEditPage() {
   const router = useRouter();
@@ -60,11 +114,14 @@ export default function PropertyEditPage() {
   const [email, setEmail] = useState<string | undefined>();
   const [tab, setTab] = useState('ข้อมูลทั่วไป');
   const [p, setP] = useState<Property | null>(null);
+  const [baseline, setBaseline] = useState<ReturnType<typeof saveSnapshot> | null>(null);
   const [readiness, setReadiness] = useState<ReadinessVerdict | null>(null);
   const [effective, setEffective] = useState<EffectivePolicies | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [customAmenity, setCustomAmenity] = useState('');
 
   async function loadReadiness() {
     const r = await api.getPropertyReadiness(id, propertyId).catch(() => null);
@@ -85,10 +142,25 @@ export default function PropertyEditPage() {
       }
       try {
         const { property } = await api.getProperty(id, propertyId);
-        if (active) setP(property);
+        // Canonicalise any legacy price-display value so the form always holds —
+        // and later saves — a value the API's enum accepts.
+        const normalized: Property = {
+          ...property,
+          pricing: {
+            ...property.pricing,
+            priceDisplayMode: toCanonicalPriceMode(property.pricing.priceDisplayMode),
+          },
+        };
+        if (active) {
+          setP(normalized);
+          setBaseline(saveSnapshot(normalized));
+        }
         await loadReadiness();
-      } catch (err) {
-        if (err instanceof ApiRequestError) setMsg(err.message);
+      } catch {
+        if (active) {
+          setSaveState('error');
+          setSaveMsg(SAVE_MESSAGES.serverError);
+        }
       } finally {
         if (active) setLoading(false);
       }
@@ -100,12 +172,32 @@ export default function PropertyEditPage() {
 
   function set<K extends keyof Property>(key: K, value: Property[K]) {
     setP((prev) => (prev ? { ...prev, [key]: value } : prev));
+    if (saveState !== 'idle') {
+      setSaveState('idle');
+      setSaveMsg(null);
+    }
   }
+
+  const mode = p ? toCanonicalPriceMode(p.pricing.priceDisplayMode) : 'STARTING_FROM';
+  const priceFields = priceFieldsForMode(mode);
 
   async function save() {
     if (!p) return;
-    setSaving(true);
-    setMsg(null);
+    // No-change guard — never surface a technical "nothing to update".
+    if (baseline && !propertyChanged(saveSnapshot(p), baseline)) {
+      setSaveState('idle');
+      setSaveMsg(SAVE_MESSAGES.noChanges);
+      return;
+    }
+    const found = validate(p);
+    setErrors(found);
+    if (Object.keys(found).length > 0) {
+      setSaveState('invalid');
+      setSaveMsg(SAVE_MESSAGES.validation);
+      return;
+    }
+    setSaveState('saving');
+    setSaveMsg(SAVE_MESSAGES.saving);
     try {
       await api.updateProperty(id, propertyId, {
         name: p.name,
@@ -120,11 +212,12 @@ export default function PropertyEditPage() {
       });
       await api.putPropertyPolicies(id, propertyId, p.policyOverrides);
       await loadReadiness();
-      setMsg('บันทึกแล้ว');
+      setBaseline(saveSnapshot(p));
+      setSaveState('saved');
+      setSaveMsg(SAVE_MESSAGES.saved);
     } catch (err) {
-      setMsg(err instanceof ApiRequestError ? err.message : 'บันทึกไม่สำเร็จ');
-    } finally {
-      setSaving(false);
+      setSaveState('error');
+      setSaveMsg(saveErrorMessage(err));
     }
   }
 
@@ -141,6 +234,19 @@ export default function PropertyEditPage() {
         <p>กำลังโหลด…</p>
       </Page>
     );
+
+  const other = otherAmenities(p.amenities);
+
+  function addAmenity() {
+    const v = customAmenity.trim();
+    if (!v || !p) return;
+    if (!other.includes(v)) set('amenities', { ...p.amenities, other: [...other, v] });
+    setCustomAmenity('');
+  }
+  function removeAmenity(v: string) {
+    if (!p) return;
+    set('amenities', { ...p.amenities, other: other.filter((o) => o !== v) });
+  }
 
   return (
     <Page>
@@ -161,12 +267,12 @@ export default function PropertyEditPage() {
           />
         ) : null}
       </div>
-      {msg && <p style={{ color: msg === 'บันทึกแล้ว' ? colors.ok : colors.warn }}>{msg}</p>}
+      <SaveStatus state={saveState} message={saveMsg} />
       <Tabs tabs={TABS} active={tab} onChange={setTab} />
 
       {tab === 'ข้อมูลทั่วไป' && (
         <Section>
-          <Field label="ชื่อที่พัก">
+          <Field label="ชื่อที่พัก" error={errors.name}>
             <Input value={p.name} onChange={(e) => set('name', e.target.value)} />
           </Field>
           <Field label="รหัส (ไม่บังคับ)">
@@ -196,55 +302,60 @@ export default function PropertyEditPage() {
 
       {tab === 'ที่ตั้ง' && (
         <Section>
-          {(['province', 'district', 'subdistrict', 'area', 'address'] as const).map((k) => (
-            <Field
-              key={k}
-              label={
-                {
-                  province: 'จังหวัด',
-                  district: 'อำเภอ/เขต',
-                  subdistrict: 'ตำบล/แขวง',
-                  area: 'พื้นที่/ย่าน',
-                  address: 'ที่อยู่',
-                }[k]
-              }
-            >
-              <Input
-                value={p.location[k] ?? ''}
-                onChange={(e) => set('location', { ...p.location, [k]: e.target.value || null })}
-              />
-            </Field>
-          ))}
+          <Guidance text={PROPERTY_TAB_GUIDANCE['ที่ตั้ง']} />
+          {LOCATION_FIELDS.map((f) =>
+            f.key === 'province' ? (
+              <Field key={f.key} label={f.label}>
+                <Select
+                  value={p.location.province ?? ''}
+                  onChange={(e) =>
+                    set('location', { ...p.location, province: e.target.value || null })
+                  }
+                >
+                  <option value="">— เลือกจังหวัด —</option>
+                  {THAI_PROVINCES.map((prov) => (
+                    <option key={prov} value={prov}>
+                      {prov}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            ) : (
+              <Field key={f.key} label={f.label}>
+                <Input
+                  value={p.location[f.key] ?? ''}
+                  placeholder={`เช่น ${f.placeholder}`}
+                  onChange={(e) =>
+                    set('location', { ...p.location, [f.key]: e.target.value || null })
+                  }
+                />
+              </Field>
+            ),
+          )}
+          <p style={{ fontSize: '0.8rem', color: colors.muted }}>{LOCATION_HELP}</p>
         </Section>
       )}
 
       {tab === 'ความจุ' && (
         <Section>
-          {(['bedrooms', 'bathrooms', 'beds', 'maxGuests'] as const).map((k) => (
-            <Field
-              key={k}
-              label={
-                {
-                  bedrooms: 'ห้องนอน',
-                  bathrooms: 'ห้องน้ำ',
-                  beds: 'จำนวนเตียง',
-                  maxGuests: 'ผู้เข้าพักสูงสุด',
-                }[k]
-              }
-            >
+          <Guidance text={PROPERTY_TAB_GUIDANCE['ความจุ']} />
+          {CAPACITY_FIELDS.map((f) => (
+            <Field key={f.key} label={`${f.label} (${f.unit})`} error={errors[f.key]}>
               <Input
                 type="number"
-                value={p.capacity[k] ?? ''}
+                inputMode="numeric"
+                min={0}
+                value={p.capacity[f.key] ?? ''}
                 onChange={(e) =>
                   set('capacity', {
                     ...p.capacity,
-                    [k]: e.target.value ? Number(e.target.value) : null,
+                    [f.key]: e.target.value ? Number(e.target.value) : null,
                   })
                 }
               />
             </Field>
           ))}
-          <Field label="นโยบายผู้เข้าพักเพิ่ม">
+          <Field label="นโยบายผู้เข้าพักเพิ่ม (ไม่บังคับ)">
             <Input
               value={p.capacity.extraGuestPolicy ?? ''}
               onChange={(e) =>
@@ -252,57 +363,182 @@ export default function PropertyEditPage() {
               }
             />
           </Field>
+          <p style={{ fontSize: '0.8rem', color: colors.muted }}>{CAPACITY_HELP}</p>
         </Section>
       )}
 
       {tab === 'สิ่งอำนวยความสะดวก' && (
         <Section>
-          {AMENITY_KEYS.map(([key, label]) => (
+          <Guidance text={PROPERTY_TAB_GUIDANCE['สิ่งอำนวยความสะดวก']} />
+          {AMENITY_OPTIONS.map((o) => (
             <Toggle
-              key={key}
-              checked={p.amenities[key] === true}
-              onChange={(v) => set('amenities', { ...p.amenities, [key]: v })}
-              label={label}
+              key={o.key}
+              checked={p.amenities[o.key] === true}
+              onChange={(v) => set('amenities', { ...p.amenities, [o.key]: v })}
+              label={o.label}
             />
           ))}
+          <div style={{ marginTop: '0.75rem' }}>
+            <Field label="+ เพิ่มสิ่งอำนวยความสะดวกอื่น">
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <Input
+                  value={customAmenity}
+                  placeholder="เช่น เครื่องเสียง"
+                  onChange={(e) => setCustomAmenity(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addAmenity();
+                    }
+                  }}
+                  style={{ flex: 1, minWidth: 160 }}
+                />
+                <Button onClick={addAmenity}>เพิ่ม</Button>
+              </div>
+            </Field>
+            {other.length > 0 && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                {other.map((o) => (
+                  <span
+                    key={o}
+                    style={{
+                      background: colors.cardBg,
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: 999,
+                      padding: '2px 10px',
+                      fontSize: '0.85rem',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    {o}
+                    <button
+                      type="button"
+                      onClick={() => removeAmenity(o)}
+                      aria-label={`ลบ ${o}`}
+                      style={{
+                        border: 'none',
+                        background: 'none',
+                        cursor: 'pointer',
+                        color: colors.muted,
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         </Section>
       )}
 
       {tab === 'ราคา' && (
         <Section>
-          <Field label="โหมดการแสดงราคา">
-            <Select
-              value={p.pricing.priceDisplayMode}
-              onChange={(e) => set('pricing', { ...p.pricing, priceDisplayMode: e.target.value })}
-            >
-              <option value="hidden">ไม่แสดงราคา</option>
-              <option value="starting_from">ราคาเริ่มต้น</option>
-              <option value="fixed">ราคาคงที่</option>
-            </Select>
+          <Guidance text={PROPERTY_TAB_GUIDANCE['ราคา']} />
+          <Field label={PRICE_MODE_QUESTION}>
+            <div style={{ display: 'grid', gap: 8 }}>
+              {PRICE_MODE_OPTIONS.map((o) => (
+                <label
+                  key={o.value}
+                  style={{
+                    display: 'flex',
+                    gap: 8,
+                    alignItems: 'flex-start',
+                    border: `1px solid ${mode === o.value ? colors.ok : colors.border}`,
+                    borderRadius: 8,
+                    padding: '0.6rem 0.75rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="priceMode"
+                    checked={mode === o.value}
+                    onChange={() =>
+                      set('pricing', {
+                        ...p.pricing,
+                        priceDisplayMode: o.value as PriceDisplayMode,
+                      })
+                    }
+                    style={{ marginTop: 3 }}
+                  />
+                  <span>
+                    <strong>{o.label}</strong>
+                    <br />
+                    <span style={{ fontSize: '0.85rem', color: colors.muted }}>
+                      {o.description}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
           </Field>
-          {(
-            [
-              'startingPrice',
-              'weekdayPrice',
-              'weekendPrice',
-              'securityDeposit',
-              'extraGuestPrice',
-            ] as const
-          ).map((k) => (
+
+          {priceFields.startingPrice && (
+            <Field label="ราคาเริ่มต้น (บาท)" error={errors.startingPrice}>
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                value={p.pricing.startingPrice ?? ''}
+                onChange={(e) =>
+                  set('pricing', {
+                    ...p.pricing,
+                    startingPrice: e.target.value ? Number(e.target.value) : null,
+                  })
+                }
+              />
+              {p.pricing.startingPrice != null && (
+                <span style={{ fontSize: '0.8rem', color: colors.muted }}>
+                  {formatBaht(p.pricing.startingPrice)}
+                </span>
+              )}
+            </Field>
+          )}
+
+          {priceFields.range &&
+            (['weekdayPrice', 'weekendPrice'] as const).map((k) => (
+              <Field
+                key={k}
+                label={`${k === 'weekdayPrice' ? 'ราคาวันธรรมดา' : 'ราคาสุดสัปดาห์'} (บาท)`}
+                error={errors[k]}
+              >
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  value={p.pricing[k] ?? ''}
+                  onChange={(e) =>
+                    set('pricing', {
+                      ...p.pricing,
+                      [k]: e.target.value ? Number(e.target.value) : null,
+                    })
+                  }
+                />
+                {p.pricing[k] != null && (
+                  <span style={{ fontSize: '0.8rem', color: colors.muted }}>
+                    {formatBaht(p.pricing[k])}
+                  </span>
+                )}
+              </Field>
+            ))}
+
+          {(['securityDeposit', 'extraGuestPrice'] as const).map((k) => (
             <Field
               key={k}
               label={
-                {
-                  startingPrice: 'ราคาเริ่มต้น',
-                  weekdayPrice: 'ราคาวันธรรมดา',
-                  weekendPrice: 'ราคาสุดสัปดาห์',
-                  securityDeposit: 'เงินมัดจำ',
-                  extraGuestPrice: 'ราคาผู้เข้าพักเพิ่ม',
-                }[k]
+                k === 'securityDeposit'
+                  ? 'เงินมัดจำ (ไม่บังคับ, บาท)'
+                  : 'ผู้เข้าพักเพิ่ม (ไม่บังคับ, บาท/คน)'
               }
+              error={errors[k]}
             >
               <Input
                 type="number"
+                inputMode="numeric"
+                min={0}
                 value={p.pricing[k] ?? ''}
                 onChange={(e) =>
                   set('pricing', {
@@ -311,6 +547,12 @@ export default function PropertyEditPage() {
                   })
                 }
               />
+              {p.pricing[k] != null && (
+                <span style={{ fontSize: '0.8rem', color: colors.muted }}>
+                  {formatBaht(p.pricing[k])}
+                  {k === 'extraGuestPrice' ? ' / คน' : ''}
+                </span>
+              )}
             </Field>
           ))}
         </Section>
@@ -318,6 +560,7 @@ export default function PropertyEditPage() {
 
       {tab === 'เนื้อหา' && (
         <Section>
+          <Guidance text={PROPERTY_TAB_GUIDANCE['เนื้อหา']} />
           <Field label="จุดเด่น (บรรทัดละ 1)">
             <Textarea
               value={p.content.sellingPoints.join('\n')}
@@ -367,6 +610,7 @@ export default function PropertyEditPage() {
 
       {tab === 'นโยบายเฉพาะ' && (
         <Section title="นโยบายเฉพาะที่พัก (ปล่อยว่าง = ใช้ตามธุรกิจ)">
+          <Guidance text={PROPERTY_TAB_GUIDANCE['นโยบายเฉพาะ']} />
           <Field label="นโยบายห้องว่าง">
             <Select
               value={p.policyOverrides.availabilityPolicy ?? ''}
@@ -461,7 +705,7 @@ export default function PropertyEditPage() {
       )}
 
       <StickyBar>
-        <Button kind="primary" onClick={save} disabled={saving}>
+        <Button kind="primary" onClick={save} disabled={saveState === 'saving'}>
           บันทึก
         </Button>
         {p.status === 'active' ? (

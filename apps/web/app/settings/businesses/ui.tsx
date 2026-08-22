@@ -59,17 +59,22 @@ export function Card({ children, onClick }: { children: ReactNode; onClick?: () 
 export function Field({
   label,
   hint,
+  error,
   children,
 }: {
   label: string;
   hint?: string;
+  /** Field-level validation message, shown in danger colour below the input. */
+  error?: string;
   children: ReactNode;
 }) {
   return (
     <label style={{ display: 'block', marginBottom: '0.75rem' }}>
       <span style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>{label}</span>
       {children}
-      {hint ? (
+      {error ? (
+        <span style={{ display: 'block', fontSize: '0.8rem', color: colors.danger }}>{error}</span>
+      ) : hint ? (
         <span style={{ display: 'block', fontSize: '0.8rem', color: colors.muted }}>{hint}</span>
       ) : null}
     </label>
