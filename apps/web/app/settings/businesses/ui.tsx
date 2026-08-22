@@ -498,6 +498,52 @@ export const BOOKING_OPTIONS: PolicyOption<BookingPolicy>[] = [
   { value: 'MANUAL', label: 'กำหนดเอง', description: 'คุณกำหนดวิธีการจองเอง' },
 ];
 
+// Response Strategy — what to do on Business MATCH + NO_PROPERTY_MATCH.
+// A response POLICY only; it never turns a mismatch into a MATCH.
+export type NoPropertyMatchStrategyValue =
+  'DO_NOT_RESPOND' | 'DRAFT_BUSINESS_ONLY' | 'HUMAN_REVIEW';
+export const RESPONSE_STRATEGY_QUESTION = 'ถ้าไม่มีที่พักที่ตรงกับลูกค้า 100% ให้ระบบทำอย่างไร?';
+export const RESPONSE_STRATEGY_OPTIONS: PolicyOption<NoPropertyMatchStrategyValue>[] = [
+  {
+    value: 'DO_NOT_RESPOND',
+    label: 'ไม่ตอบ',
+    description: 'หยุดเมื่อไม่มีที่พักที่ตรงความต้องการ',
+  },
+  {
+    value: 'DRAFT_BUSINESS_ONLY',
+    label: 'สร้างคำตอบทั่วไปของธุรกิจ',
+    description: 'ใช้เฉพาะข้อมูลธุรกิจที่คุณบันทึกไว้ และไม่อ้างว่ามีที่พักหลังใดตรง',
+  },
+  {
+    value: 'HUMAN_REVIEW',
+    label: 'ส่งให้ฉันตรวจสอบก่อน',
+    description: 'ระบบเตรียมข้อความให้ แต่ต้องให้คุณตรวจสอบก่อน',
+    recommended: true,
+  },
+];
+export const RESPONSE_STRATEGY_SAFETY_NOTE = 'การตั้งค่านี้ไม่ทำให้ที่พักที่ไม่ตรงกลายเป็น MATCH';
+
+/** Owner-facing explanation of why a Draft exists despite NO property match. */
+export function noMatchExplainLines(strategy: NoPropertyMatchStrategyValue): string[] {
+  if (strategy === 'DO_NOT_RESPOND') {
+    return ['ไม่มีบ้านที่ตรงทั้งหมด', 'คุณตั้งค่าไว้ว่า "ไม่ตอบ"', 'ดังนั้นระบบจึงไม่สร้างข้อความ'];
+  }
+  const head =
+    strategy === 'HUMAN_REVIEW'
+      ? 'คุณตั้งค่าไว้ว่า "ส่งให้ฉันตรวจสอบก่อน"'
+      : 'คุณตั้งค่าไว้ว่า "สร้างคำตอบทั่วไปของธุรกิจ"';
+  return [
+    'ไม่มีบ้านที่ตรงทั้งหมด',
+    `แต่${head}`,
+    'ดังนั้นระบบจึง:',
+    '✓ สร้างข้อความทั่วไปจากข้อมูลธุรกิจ',
+    '✓ ไม่เลือกที่พักหลังใด',
+    '✓ ไม่ยืนยันห้องว่าง',
+    '✓ ไม่พูดราคา',
+    strategy === 'HUMAN_REVIEW' ? '✓ รอคุณตรวจสอบ' : '✓ เป็นไปตามนโยบายธุรกิจของคุณ',
+  ];
+}
+
 // Response SLA: owner-friendly dropdown → the backend's minutes integer (Phase F).
 export const SLA_OPTIONS: { value: number; label: string }[] = [
   { value: 5, label: '5 นาที' },

@@ -8,6 +8,7 @@ import { newId } from '../lib/tokens';
 import { createAuthenticate, createCsrfGuard, noStore } from '../lib/http';
 import type { BusinessPropertyStore } from './store';
 import type { Property, BusinessPolicies, BusinessReadinessSnapshot } from './types';
+import { DEFAULT_NO_PROPERTY_MATCH_STRATEGY } from './types';
 import { evaluateBusinessReadiness, evaluatePropertyReadiness } from './readiness';
 import { resolvePropertyPolicies } from './policies';
 import { isValidContactValue, publicContactChannel } from './contacts';
@@ -122,6 +123,10 @@ const policiesSchema = z.object({
   responsibleOwner: z.string().max(200).nullable().optional(),
   operatingHours: z.string().max(200).nullable().optional(),
   responseSlaMinutes: z.number().int().positive().nullable().optional(),
+  noPropertyMatchStrategy: z
+    .enum(['DO_NOT_RESPOND', 'DRAFT_BUSINESS_ONLY', 'HUMAN_REVIEW'])
+    .optional(),
+  allowNearMatchSuggestions: z.boolean().optional(),
 });
 
 function publicProperty(p: Property) {
@@ -249,6 +254,10 @@ export function registerBusinessPropertyRoutes(
         responsibleOwner: parsed.data.responsibleOwner ?? null,
         operatingHours: parsed.data.operatingHours ?? null,
         responseSlaMinutes: parsed.data.responseSlaMinutes ?? null,
+        // Response Strategy — safe default when the owner has not chosen one.
+        noPropertyMatchStrategy:
+          parsed.data.noPropertyMatchStrategy ?? DEFAULT_NO_PROPERTY_MATCH_STRATEGY,
+        allowNearMatchSuggestions: parsed.data.allowNearMatchSuggestions ?? false,
       };
       const saved = await bpStore.upsertBusinessPolicies(id, policies);
       await audit(business.workspaceId, 'PolicyChanged', req.authUser!.email, { businessId: id });

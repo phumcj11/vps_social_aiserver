@@ -133,6 +133,12 @@ export function registerAiDraftRoutes(app: FastifyInstance, deps: AiDraftRouteDe
         parsed.data.businessMatchId,
         req.authUser!.id,
       );
+      // Response Strategy suppressed drafting (NO_PROPERTY_MATCH + DO_NOT_RESPOND):
+      // no Draft is created and no Action is taken.
+      if (!result.draft) {
+        reply.code(200);
+        return { draft: null, created: false, skipped: result.skipped ?? null };
+      }
       reply.code(result.created ? 201 : 200);
       return { draft: publicDraft(result.draft), created: result.created };
     } catch (err) {
@@ -150,6 +156,10 @@ export function registerAiDraftRoutes(app: FastifyInstance, deps: AiDraftRouteDe
       const { id } = req.params as { id: string };
       try {
         const result = await aiDrafts.regenerate(workspaceId, id, req.authUser!.id);
+        if (!result.draft) {
+          reply.code(200);
+          return { draft: null, created: false, skipped: result.skipped ?? null };
+        }
         reply.code(201);
         return { draft: publicDraft(result.draft), created: result.created };
       } catch (err) {

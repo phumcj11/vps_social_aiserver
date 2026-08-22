@@ -18,6 +18,7 @@ import type {
   PropertyPolicyOverrides,
   EntityStatus,
 } from './types';
+import { DEFAULT_NO_PROPERTY_MATCH_STRATEGY } from './types';
 import {
   type BusinessPropertyStore,
   type CreatePropertyInput,
@@ -216,6 +217,8 @@ export class DrizzleBusinessPropertyStore implements BusinessPropertyStore {
       responsibleOwner: policies.responsibleOwner,
       operatingHours: policies.operatingHours,
       responseSlaMinutes: policies.responseSlaMinutes,
+      noPropertyMatchStrategy: policies.noPropertyMatchStrategy,
+      allowNearMatchSuggestions: policies.allowNearMatchSuggestions,
     };
     if (existing) {
       await this.db
@@ -408,5 +411,9 @@ function fromPolicyRow(row: BusinessPolicyRow): BusinessPolicies {
     responsibleOwner: row.responsibleOwner,
     operatingHours: row.operatingHours,
     responseSlaMinutes: row.responseSlaMinutes,
+    noPropertyMatchStrategy:
+      (row.noPropertyMatchStrategy as BusinessPolicies['noPropertyMatchStrategy']) ??
+      DEFAULT_NO_PROPERTY_MATCH_STRATEGY,
+    allowNearMatchSuggestions: Boolean(row.allowNearMatchSuggestions),
   };
 }

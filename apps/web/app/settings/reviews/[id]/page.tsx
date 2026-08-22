@@ -253,8 +253,27 @@ export default function ReviewDetailPage() {
               color: '#5c4500',
             }}
           >
-            ไม่พบที่พักที่ตรงกับคำขอนี้ (NO_PROPERTY_MATCH) — ตอบได้เฉพาะระดับธุรกิจ
-            ห้ามอ้างถึงที่พักเฉพาะ
+            <p style={{ margin: '0 0 0.4rem', fontWeight: 700 }}>⚠ ไม่มีที่พักที่ตรงทั้งหมด</p>
+            <p style={{ margin: '0 0 0.25rem' }}>
+              ธุรกิจ: <strong>{business?.name ?? '—'}</strong>
+            </p>
+            <p style={{ margin: '0 0 0.4rem' }}>
+              ที่พัก: <strong>ไม่มีที่พักที่ Match</strong>
+            </p>
+            {propertyMatch &&
+            propertyMatch.reasons.some((r) => r.includes('_MISMATCH') || r.includes('_MISSING')) ? (
+              <ul style={{ margin: '0 0 0.4rem', paddingLeft: '1.2rem' }}>
+                {propertyMatch.reasons
+                  .filter((r) => r.includes('_MISMATCH') || r.includes('_MISSING'))
+                  .map((r) => (
+                    <li key={r}>✗ {reasonThai(r)}</li>
+                  ))}
+              </ul>
+            ) : null}
+            <p style={{ margin: 0, fontSize: '0.85rem' }}>
+              ระบบตอบได้เฉพาะระดับธุรกิจ ห้ามอ้างถึงที่พักเฉพาะ ราคา หรือยืนยันห้องว่าง —
+              กรุณาตรวจสอบก่อนอนุมัติ
+            </p>
           </div>
         )}
         {warnings.length > 0 && (

@@ -17,6 +17,7 @@ import { buildDraftPrompt } from './prompt-builder';
 import { checkDraft } from './policy-checker';
 import { AiDraftError, AiDraftErrorCode } from './errors';
 import type { DraftContext } from './types';
+import { DEFAULT_NO_PROPERTY_MATCH_STRATEGY } from '../business-property/types';
 
 /** AI Draft lifecycle event names (safe payloads only). */
 export const AiDraftEventType = {
@@ -33,8 +34,11 @@ export const AiDraftEventType = {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface GenerateResult {
-  draft: AiDraftRecord;
+  /** null when the Response Strategy suppressed drafting (DO_NOT_RESPOND). */
+  draft: AiDraftRecord | null;
   created: boolean;
+  /** Set when NO_PROPERTY_MATCH + DO_NOT_RESPOND stopped before drafting. */
+  skipped?: 'DO_NOT_RESPOND';
 }
 
 export interface DraftDetail {
@@ -129,6 +133,23 @@ export class AiDraftCoordinator {
     }
 
     const context = await this.assembleContext(workspaceId, match);
+
+    // Response Strategy (Business MATCH + NO_PROPERTY_MATCH). A response POLICY:
+    // it decides WHETHER/HOW to draft, never turns a mismatch into a MATCH and
+    // never adds Property facts (the context already has selectedProperty=null).
+    let forceHumanReview = false;
+    if (context.noPropertyMatch) {
+      const pol = await this.deps.repo.getBusinessPolicies(match.businessId);
+      const strategy = pol?.noPropertyMatchStrategy ?? DEFAULT_NO_PROPERTY_MATCH_STRATEGY;
+      if (strategy === 'DO_NOT_RESPOND') {
+        // Stop before drafting; nothing is created. The persisted NO_PROPERTY_MATCH
+        // record already explains why to the operator.
+        return { draft: null, created: false, skipped: 'DO_NOT_RESPOND' };
+      }
+      // DRAFT_BUSINESS_ONLY proceeds normally; HUMAN_REVIEW forces review below.
+      forceHumanReview = strategy === 'HUMAN_REVIEW';
+    }
+
     const maxLength = this.deps.env.AI_DRAFT_MAX_LENGTH;
     const prompt = buildDraftPrompt(context, maxLength);
 
@@ -156,7 +177,10 @@ export class AiDraftCoordinator {
       : checkDraft(content ?? '', context, maxLength);
 
     // BLOCK never yields a ready state; PASS → draft, NEEDS_REVIEW/BLOCK → needs_review.
-    const status: AiDraftStatus = policyResult.decision === 'PASS' ? 'draft' : 'needs_review';
+    // A NO_PROPERTY_MATCH + HUMAN_REVIEW business-only draft is FORCED into review
+    // even when the policy check passes (owner asked to see it first).
+    const status: AiDraftStatus =
+      policyResult.decision === 'PASS' && !forceHumanReview ? 'draft' : 'needs_review';
     const version = priorDrafts.length > 0 ? Math.max(...priorDrafts.map((d) => d.version)) + 1 : 1;
 
     const draft = await this.deps.repo.createDraft({

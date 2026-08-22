@@ -72,17 +72,29 @@ async function main(): Promise<void> {
         console.error('Refusing: --business-match must be a valid UUID.');
         process.exit(2);
       }
-      const { draft, created } = await coordinator.generate(workspaceId, businessMatch, null);
-      console.log(created ? 'Generated new draft:' : 'Existing draft (not overwritten):');
-      printDraft(draft);
+      const { draft, created, skipped } = await coordinator.generate(
+        workspaceId,
+        businessMatch,
+        null,
+      );
+      if (!draft) {
+        console.log(`No draft created (response strategy: ${skipped ?? 'suppressed'}).`);
+      } else {
+        console.log(created ? 'Generated new draft:' : 'Existing draft (not overwritten):');
+        printDraft(draft);
+      }
     } else if (command === 'regenerate') {
       if (!draftId || !UUID_RE.test(draftId)) {
         console.error('Refusing: --draft must be a valid UUID.');
         process.exit(2);
       }
       const { draft } = await coordinator.regenerate(workspaceId, draftId, null);
-      console.log('Regenerated (new version):');
-      printDraft(draft);
+      if (!draft) {
+        console.log('No draft created (response strategy suppressed drafting).');
+      } else {
+        console.log('Regenerated (new version):');
+        printDraft(draft);
+      }
     } else if (command === 'list') {
       if (!businessMatch || !UUID_RE.test(businessMatch)) {
         console.error('Refusing: --business-match must be a valid UUID.');

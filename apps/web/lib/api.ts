@@ -114,6 +114,8 @@ export type PricingPolicy =
 export type PromotionPolicy = 'NONE' | 'APPROVED_ONLY' | 'MANUAL_CONFIRMATION';
 export type BookingPolicy = 'CONTACT_ONLY' | 'LINE' | 'PHONE' | 'WEBSITE' | 'MANUAL';
 
+export type NoPropertyMatchStrategy = 'DO_NOT_RESPOND' | 'DRAFT_BUSINESS_ONLY' | 'HUMAN_REVIEW';
+
 export interface BusinessPolicies {
   availabilityPolicy: AvailabilityPolicy;
   pricingPolicy: PricingPolicy;
@@ -125,6 +127,8 @@ export interface BusinessPolicies {
   responsibleOwner: string | null;
   operatingHours: string | null;
   responseSlaMinutes: number | null;
+  noPropertyMatchStrategy: NoPropertyMatchStrategy;
+  allowNearMatchSuggestions: boolean;
 }
 
 export interface PropertyPolicyOverrides {

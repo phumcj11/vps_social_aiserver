@@ -36,6 +36,18 @@ export type PromotionPolicy = 'NONE' | 'APPROVED_ONLY' | 'MANUAL_CONFIRMATION';
 export type BookingPolicy = 'CONTACT_ONLY' | 'LINE' | 'PHONE' | 'WEBSITE' | 'MANUAL';
 
 /** Business-level policy set. */
+/**
+ * What the system does when the Business MATCHes a Lead but NO Property fully
+ * matches. A RESPONSE POLICY — it decides WHETHER/HOW to prepare a response; it
+ * NEVER turns a mismatched Property into a MATCH and never fabricates facts.
+ *   DO_NOT_RESPOND    — stop after NO_PROPERTY_MATCH; no Draft.
+ *   DRAFT_BUSINESS_ONLY — Business-level Draft from Business facts only; no Property.
+ *   HUMAN_REVIEW      — safe Business-only Draft, forced into Human Review (default).
+ */
+export type NoPropertyMatchStrategy = 'DO_NOT_RESPOND' | 'DRAFT_BUSINESS_ONLY' | 'HUMAN_REVIEW';
+
+export const DEFAULT_NO_PROPERTY_MATCH_STRATEGY: NoPropertyMatchStrategy = 'HUMAN_REVIEW';
+
 export interface BusinessPolicies {
   availabilityPolicy: AvailabilityPolicy;
   pricingPolicy: PricingPolicy;
@@ -47,6 +59,10 @@ export interface BusinessPolicies {
   responsibleOwner: string | null;
   operatingHours: string | null;
   responseSlaMinutes: number | null;
+  /** Response Strategy (additive): what to do on Business MATCH + NO_PROPERTY_MATCH. */
+  noPropertyMatchStrategy: NoPropertyMatchStrategy;
+  /** Future capability — near-match suggestions. Persisted but off by default. */
+  allowNearMatchSuggestions: boolean;
 }
 
 /** Property policy OVERRIDES — null means "inherit from the Business". */

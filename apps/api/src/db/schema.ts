@@ -1145,6 +1145,9 @@ export const businessPolicies = mysqlTable(
     responsibleOwner: varchar('responsible_owner', { length: 200 }),
     operatingHours: varchar('operating_hours', { length: 200 }),
     responseSlaMinutes: int('response_sla_minutes'),
+    // Response Strategy (additive): behavior on Business MATCH + NO_PROPERTY_MATCH.
+    noPropertyMatchStrategy: varchar('no_property_match_strategy', { length: 40 }),
+    allowNearMatchSuggestions: boolean('allow_near_match_suggestions').notNull().default(false),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow().onUpdateNow(),
   },

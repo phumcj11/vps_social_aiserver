@@ -99,6 +99,13 @@
       "when": 1787248997503,
       "tag": "0013_elite_barracuda",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "5",
+      "when": 1787380434438,
+      "tag": "0014_bright_black_bolt",
+      "breakpoints": true
     }
   ]
 }

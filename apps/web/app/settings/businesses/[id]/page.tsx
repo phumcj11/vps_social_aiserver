@@ -40,6 +40,11 @@ import {
   PROMOTION_OPTIONS,
   BOOKING_OPTIONS,
   POLICY_QUESTIONS,
+  RESPONSE_STRATEGY_QUESTION,
+  RESPONSE_STRATEGY_OPTIONS,
+  RESPONSE_STRATEGY_SAFETY_NOTE,
+  noMatchExplainLines,
+  type NoPropertyMatchStrategyValue,
   SLA_OPTIONS,
   PROHIBITED_CLAIM_PRESETS,
   ESCALATION_DEFAULT,
@@ -81,6 +86,7 @@ const TABS = [
   'ช่องทางติดต่อ',
   'นโยบาย',
   'การจับคู่ลูกค้า',
+  'กลยุทธ์การตอบ Lead',
   'ความพร้อมใช้งาน',
   'ประวัติ',
 ];
@@ -227,6 +233,15 @@ export default function BusinessDetailPage() {
 
       {tab === 'การจับคู่ลูกค้า' && (
         <MatchingTab businessId={id} profile={profile} properties={properties} onChange={reload} />
+      )}
+
+      {tab === 'กลยุทธ์การตอบ Lead' && (
+        <ResponseStrategyTab
+          businessId={id}
+          policies={policies}
+          onChange={reload}
+          onGoPolicies={() => setTab('นโยบาย')}
+        />
       )}
 
       {tab === 'ความพร้อมใช้งาน' && (
@@ -595,6 +610,8 @@ function PoliciesTab({
       responsibleOwner: null,
       operatingHours: null,
       responseSlaMinutes: 10,
+      noPropertyMatchStrategy: 'HUMAN_REVIEW',
+      allowNearMatchSuggestions: false,
     },
   );
   // Prohibited claims split into recommended presets (checkboxes) + custom lines.
@@ -1113,6 +1130,108 @@ function MatchingTab({
       <StickyBar>
         <Button kind="primary" onClick={save} disabled={saveState === 'saving'}>
           บันทึกการจับคู่
+        </Button>
+        <SaveStatus state={saveState} message={saveMsg} />
+      </StickyBar>
+    </Section>
+  );
+}
+
+// ── Response Strategy (กลยุทธ์การตอบ Lead) ─────────────────────────────────────
+// What the system does on Business MATCH + NO_PROPERTY_MATCH. A response POLICY:
+// it never turns a mismatched Property into a MATCH and never fabricates facts.
+function ResponseStrategyTab({
+  businessId,
+  policies,
+  onChange,
+  onGoPolicies,
+}: {
+  businessId: string;
+  policies: BusinessPolicies | null;
+  onChange: () => Promise<void> | void;
+  onGoPolicies: () => void;
+}) {
+  const [strategy, setStrategy] = useState<NoPropertyMatchStrategyValue>(
+    policies?.noPropertyMatchStrategy ?? 'HUMAN_REVIEW',
+  );
+  const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+
+  if (!policies) {
+    return (
+      <Section title="กลยุทธ์การตอบ Lead">
+        <Card>
+          <p style={{ marginTop: 0 }}>กรุณาตั้งค่านโยบายธุรกิจก่อน จึงจะตั้งกลยุทธ์การตอบได้</p>
+          <Button kind="primary" onClick={onGoPolicies}>
+            ไปตั้งค่านโยบาย
+          </Button>
+        </Card>
+      </Section>
+    );
+  }
+
+  async function save() {
+    setSaveState('saving');
+    setSaveMsg('กำลังบันทึก...');
+    try {
+      // Preserve all other policy fields; change only the response strategy.
+      await api.putBusinessPolicies(businessId, {
+        ...policies!,
+        noPropertyMatchStrategy: strategy,
+      });
+      await onChange();
+      setSaveState('saved');
+      setSaveMsg('บันทึกเรียบร้อย');
+    } catch {
+      setSaveState('error');
+      setSaveMsg('ไม่สามารถบันทึกได้ กรุณาลองใหม่อีกครั้ง');
+    }
+  }
+
+  return (
+    <Section title="กลยุทธ์การตอบ Lead">
+      <Field label={RESPONSE_STRATEGY_QUESTION}>
+        <RadioCards
+          name="response-strategy"
+          options={RESPONSE_STRATEGY_OPTIONS}
+          value={strategy}
+          onChange={(v) => {
+            setStrategy(v);
+            if (saveState !== 'idle') {
+              setSaveState('idle');
+              setSaveMsg(null);
+            }
+          }}
+        />
+      </Field>
+
+      <Card>
+        <strong>ℹ️ {RESPONSE_STRATEGY_SAFETY_NOTE}</strong>
+      </Card>
+
+      <Field label="เสนอที่พักใกล้เคียง (กำลังพัฒนา)">
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', color: colors.muted }}>
+          <input type="checkbox" disabled checked={false} readOnly />
+          อนุญาตให้เสนอที่พักใกล้เคียง — กำลังพัฒนา ยังไม่เปิดใช้งาน
+        </label>
+      </Field>
+
+      <details style={{ marginBottom: '1rem' }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
+          ทำไมระบบยังสร้าง Draft ทั้งที่ไม่มีบ้านตรง?
+        </summary>
+        <ul style={{ marginTop: 8 }}>
+          {noMatchExplainLines(strategy).map((l) => (
+            <li key={l} style={{ listStyle: 'none', color: colors.muted }}>
+              {l}
+            </li>
+          ))}
+        </ul>
+      </details>
+
+      <StickyBar>
+        <Button kind="primary" onClick={save} disabled={saveState === 'saving'}>
+          บันทึกกลยุทธ์
         </Button>
         <SaveStatus state={saveState} message={saveMsg} />
       </StickyBar>
