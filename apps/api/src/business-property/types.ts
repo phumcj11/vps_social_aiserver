@@ -88,6 +88,12 @@ export interface BusinessReadinessSnapshot {
   contacts: ContactChannel[];
   policies: BusinessPolicies | null;
   activeProductionPropertyCount: number;
+  /**
+   * Count of ACTIVE business matching rules. The deterministic pipeline can only
+   * select this Business from a Lead when at least one active rule exists, so a
+   * Business with zero active rules is NOT_READY (owner self-service matching).
+   */
+  activeMatchingRuleCount: number;
 }
 
 // ── Property ─────────────────────────────────────────────────────────────────

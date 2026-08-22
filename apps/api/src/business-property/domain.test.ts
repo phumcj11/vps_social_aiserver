@@ -78,10 +78,23 @@ describe('business readiness', () => {
     contacts: [contact({})],
     policies: businessPolicies,
     activeProductionPropertyCount: 1,
+    activeMatchingRuleCount: 1,
   };
 
   it('READY when all requirements + an active Property are present', () => {
     expect(evaluateBusinessReadiness(snapshot).status).toBe('READY');
+  });
+
+  it('NOT_READY without a customer matching configuration', () => {
+    const v = evaluateBusinessReadiness({ ...snapshot, activeMatchingRuleCount: 0 });
+    expect(v.status).toBe('NOT_READY');
+    expect(v.missing).toContain('customer matching configuration');
+  });
+
+  it('the matching requirement is satisfied by at least one active rule', () => {
+    expect(
+      evaluateBusinessReadiness({ ...snapshot, activeMatchingRuleCount: 2 }).missing,
+    ).not.toContain('customer matching configuration');
   });
 
   it('a test-environment Business can NEVER be READY', () => {

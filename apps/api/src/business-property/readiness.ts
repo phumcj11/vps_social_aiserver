@@ -50,6 +50,7 @@ export function evaluateBusinessReadiness(s: BusinessReadinessSnapshot): Readine
   }
 
   if (s.activeProductionPropertyCount < 1) missing.push('at least one active Property');
+  if (s.activeMatchingRuleCount < 1) missing.push('customer matching configuration');
 
   const ready = missing.length === 0;
   return { ready, status: ready ? 'READY' : 'NOT_READY', missing };

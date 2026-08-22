@@ -645,9 +645,10 @@ export const CONTACT_APPROVAL_HELP = {
 };
 
 // ── Readiness → tab routing + why-it-matters (Phase G) ───────────────────────
-export type BizTab = 'ข้อมูลธุรกิจ' | 'ช่องทางติดต่อ' | 'นโยบาย' | 'ที่พัก';
+export type BizTab = 'ข้อมูลธุรกิจ' | 'ช่องทางติดต่อ' | 'นโยบาย' | 'ที่พัก' | 'การจับคู่ลูกค้า';
 export function readinessTab(missing: string): BizTab {
   const m = missing.toLowerCase();
+  if (m.includes('matching')) return 'การจับคู่ลูกค้า';
   if (m.includes('contact') || m.includes('channel')) return 'ช่องทางติดต่อ';
   if (
     m.includes('policy') ||
@@ -671,6 +672,7 @@ export const READINESS_CTA: Record<BizTab, string> = {
   ช่องทางติดต่อ: 'ไปตั้งค่าช่องทางติดต่อ',
   นโยบาย: 'ไปตั้งค่านโยบาย',
   ที่พัก: 'ไปที่พัก',
+  การจับคู่ลูกค้า: 'ไปตั้งค่าการจับคู่',
 };
 const READINESS_WHY: Record<string, string> = {
   'production environment': 'ต้องเปลี่ยนเป็น Production ก่อนระบบจึงจะใช้งานจริงได้',
@@ -686,6 +688,8 @@ const READINESS_WHY: Record<string, string> = {
   'booking policy': 'กำหนดวิธีที่ระบบแนะนำให้ลูกค้าจอง',
   'maximum guests': 'ใช้เทียบกับจำนวนผู้เข้าพักที่ลูกค้าต้องการ',
   'service location': 'ใช้จับคู่ที่พักให้ตรงพื้นที่ที่ลูกค้าถาม',
+  'customer matching configuration':
+    'ระบบใช้การจับคู่เพื่อเลือกธุรกิจนี้จาก Lead ก่อนเลือกที่พักที่เหมาะสม',
 };
 
 const THAI_REQUIREMENT: Record<string, string> = {
@@ -710,4 +714,5 @@ const THAI_REQUIREMENT: Record<string, string> = {
   'property type': 'ประเภทที่พัก',
   'service location': 'ที่ตั้งของที่พัก',
   'meaningful description': 'คำอธิบายที่พัก',
+  'customer matching configuration': 'ยังไม่ได้ตั้งค่าการจับคู่ลูกค้า',
 };

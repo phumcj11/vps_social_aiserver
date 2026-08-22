@@ -438,13 +438,15 @@ export function registerBusinessPropertyRoutes(
     noStore(reply);
     const { id } = req.params as { id: string };
     const business = await loadOwnedBusiness(req, id);
-    const [environment, profile, contacts, policies, activeProps] = await Promise.all([
+    const [environment, profile, contacts, policies, activeProps, rules] = await Promise.all([
       bpStore.getBusinessEnvironment(id),
       store.getProfileByBusiness(id),
       bpStore.listContactsByBusiness(id),
       bpStore.getBusinessPolicies(id),
       bpStore.countActivePropertiesByBusiness(id),
+      store.listRules(id),
     ]);
+    const activeMatchingRuleCount = rules.filter((r) => r.status === 'active').length;
     const snapshot: BusinessReadinessSnapshot = {
       business: {
         id: business.id,
@@ -459,6 +461,7 @@ export function registerBusinessPropertyRoutes(
       contacts,
       policies,
       activeProductionPropertyCount: activeProps,
+      activeMatchingRuleCount,
     };
     return {
       readiness: evaluateBusinessReadiness(snapshot),

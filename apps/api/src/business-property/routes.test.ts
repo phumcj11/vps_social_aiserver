@@ -221,6 +221,13 @@ describe('policies + readiness + environment + audit', () => {
       url: `/businesses/${businessId}/environment`,
       ...h(token, { environment: 'production' }),
     });
+    // A customer matching configuration is required for readiness (owner
+    // self-service matching): at least one active matching rule.
+    await app.inject({
+      method: 'POST',
+      url: `/businesses/${businessId}/matching-rules`,
+      ...h(token, { ruleType: 'district', ruleValue: 'บางแสน', priority: 0, status: 'active' }),
+    });
 
     readiness = await app.inject({
       method: 'GET',

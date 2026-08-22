@@ -15,6 +15,7 @@ import {
   type ReadinessVerdict,
   type BusinessAuditEvent,
   type Environment,
+  type MatchingRule,
 } from '../../../../lib/api';
 import { Nav } from '../../../../components/Nav';
 import {
@@ -51,9 +52,26 @@ import {
   parseHours,
   composeHours,
   THAI_PROVINCES,
+  propertyTypeLabel,
   type SaveState,
 } from '../ui';
 import { propertySummary } from '../property-ui';
+import {
+  TYPE_OPTIONS,
+  EMPTY_CONFIG,
+  configToDesiredRules,
+  rulesToConfig,
+  reconcile,
+  matchingStatus,
+  suggestConfig,
+  previewMatch,
+  hasAnyCriterion,
+  isDuplicateToken,
+  dedupeTokens,
+  MATCHING_SAVE_MESSAGES,
+  matchingSaveError,
+  type MatchingConfig,
+} from '../business-matching-ui';
 import { OnboardingChecklist } from '../onboarding';
 
 const TABS = [
@@ -62,6 +80,7 @@ const TABS = [
   'ข้อมูลธุรกิจ',
   'ช่องทางติดต่อ',
   'นโยบาย',
+  'การจับคู่ลูกค้า',
   'ความพร้อมใช้งาน',
   'ประวัติ',
 ];
@@ -205,6 +224,10 @@ export default function BusinessDetailPage() {
       )}
 
       {tab === 'นโยบาย' && <PoliciesTab businessId={id} policies={policies} onChange={reload} />}
+
+      {tab === 'การจับคู่ลูกค้า' && (
+        <MatchingTab businessId={id} profile={profile} properties={properties} onChange={reload} />
+      )}
 
       {tab === 'ความพร้อมใช้งาน' && (
         <Section title="ความพร้อมใช้งาน (Business Readiness)">
@@ -787,6 +810,311 @@ function PoliciesTab({
           บันทึกนโยบาย
         </Button>
         <SaveStatus state={saveState} message={fieldErr} />
+      </StickyBar>
+    </Section>
+  );
+}
+
+// ── Customer Matching (การจับคู่ลูกค้า) ────────────────────────────────────────
+// Owner-friendly configuration of the Business's matching rules. The owner never
+// sees rule_type / operators / ids — only "where / what type / which words".
+function ChipRow({ values, onRemove }: { values: string[]; onRemove: (v: string) => void }) {
+  if (values.length === 0) return null;
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+      {values.map((v) => (
+        <span
+          key={v}
+          style={{
+            background: colors.cardBg,
+            border: `1px solid ${colors.border}`,
+            borderRadius: 999,
+            padding: '2px 10px',
+            fontSize: '0.85rem',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          {v}
+          <button
+            type="button"
+            onClick={() => onRemove(v)}
+            aria-label={`ลบ ${v}`}
+            style={{ border: 'none', background: 'none', cursor: 'pointer', color: colors.muted }}
+          >
+            ✕
+          </button>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function MatchingTab({
+  businessId,
+  profile,
+  properties,
+  onChange,
+}: {
+  businessId: string;
+  profile: BusinessProfile | null;
+  properties: Property[];
+  onChange: () => Promise<void> | void;
+}) {
+  const [rules, setRules] = useState<MatchingRule[]>([]);
+  const [config, setConfig] = useState<MatchingConfig>(EMPTY_CONFIG);
+  const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [areaInput, setAreaInput] = useState('');
+  const [kwInput, setKwInput] = useState('');
+  const [sampleLead, setSampleLead] = useState('หาพูลวิลล่าบางแสน 12 คน มีสระ คาราโอเกะ');
+  const [loaded, setLoaded] = useState(false);
+
+  // Suggestions from PERSISTED facts (never saved without the owner pressing บันทึก).
+  const suggestion = suggestConfig({
+    province:
+      properties.map((p) => p.location.province).find((x) => x && x.trim()) ??
+      parseServiceArea(profile?.serviceArea).province ??
+      null,
+    areas: properties.map((p) => p.location.area).filter((a): a is string => Boolean(a)),
+    propertyTypes: properties
+      .map((p) => propertyTypeLabel(p.propertyType))
+      .filter((t) => t && t !== '—'),
+  });
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const res = await api.listRules(businessId).catch(() => ({ matchingRules: [] }));
+      if (!active) return;
+      setRules(res.matchingRules);
+      const existing = rulesToConfig(res.matchingRules);
+      // Prefill from persisted rules; if none yet, offer the suggestion (unsaved).
+      setConfig(hasAnyCriterion(existing) ? existing : suggestion);
+      setLoaded(true);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [businessId]);
+
+  const status = matchingStatus(rules);
+
+  function upd(patch: Partial<MatchingConfig>) {
+    setConfig((c) => ({ ...c, ...patch }));
+    if (saveState !== 'idle') {
+      setSaveState('idle');
+      setSaveMsg(null);
+    }
+  }
+  function addArea() {
+    const v = areaInput.trim();
+    if (!v) return;
+    if (isDuplicateToken(config.areas, v)) {
+      setSaveMsg(MATCHING_SAVE_MESSAGES.duplicate);
+      return;
+    }
+    upd({ areas: [...config.areas, v] });
+    setAreaInput('');
+  }
+  function addKeyword() {
+    const v = kwInput.trim();
+    if (!v) return;
+    if (isDuplicateToken([...config.keywords, ...config.types], v)) {
+      setSaveMsg(MATCHING_SAVE_MESSAGES.duplicate);
+      return;
+    }
+    upd({ keywords: [...config.keywords, v] });
+    setKwInput('');
+  }
+  function toggleType(t: string) {
+    upd({
+      types: config.types.includes(t) ? config.types.filter((x) => x !== t) : [...config.types, t],
+    });
+  }
+
+  async function save() {
+    if (!hasAnyCriterion(config)) {
+      setSaveState('invalid');
+      setSaveMsg(MATCHING_SAVE_MESSAGES.empty);
+      return;
+    }
+    setSaveState('saving');
+    setSaveMsg(MATCHING_SAVE_MESSAGES.saving);
+    try {
+      const desired = configToDesiredRules(config);
+      const plan = reconcile(rules, desired);
+      for (const c of plan.toCreate) {
+        await api.createRule(businessId, {
+          ruleType: c.ruleType,
+          ruleValue: c.ruleValue,
+          priority: 0,
+          status: 'active',
+        });
+      }
+      for (const idToReactivate of plan.toReactivate) {
+        await api.updateRule(businessId, idToReactivate, { status: 'active' });
+      }
+      for (const idToDeactivate of plan.toDeactivate) {
+        await api.updateRule(businessId, idToDeactivate, { status: 'disabled' });
+      }
+      const res = await api.listRules(businessId);
+      setRules(res.matchingRules);
+      setConfig(rulesToConfig(res.matchingRules));
+      await onChange();
+      setSaveState('saved');
+      setSaveMsg(MATCHING_SAVE_MESSAGES.saved);
+    } catch {
+      setSaveState('error');
+      setSaveMsg(matchingSaveError());
+    }
+  }
+
+  const preview = previewMatch(config, sampleLead);
+  const activeRules = rules.filter((r) => r.status === 'active');
+
+  return (
+    <Section title="การจับคู่ลูกค้า">
+      <p style={{ fontSize: '0.9rem', color: colors.muted, marginTop: 0 }}>
+        ตั้งค่าว่าลูกค้าแบบไหนเหมาะกับธุรกิจของคุณ
+        <br />
+        ระบบจะใช้ข้อมูลนี้เลือกธุรกิจ ก่อนเลือกที่พักที่เหมาะสม
+      </p>
+
+      <Card>
+        <strong>การจับคู่: </strong>
+        {status === 'ACTIVE' ? (
+          <span style={{ color: colors.ok }}>🟢 เปิดใช้งาน</span>
+        ) : (
+          <span style={{ color: colors.muted }}>⚪ ยังไม่ได้ตั้งค่า</span>
+        )}
+        {status === 'UNSET' && (
+          <p style={{ color: colors.danger, marginBottom: 0 }}>
+            ยังไม่ได้ตั้งค่าการจับคู่ ระบบจึงยังไม่สามารถเลือกธุรกิจนี้จาก Lead ได้
+          </p>
+        )}
+      </Card>
+
+      <Field label="คุณรับลูกค้าจากพื้นที่ไหน?">
+        <span
+          style={{ display: 'block', fontSize: '0.8rem', color: colors.muted, marginBottom: 4 }}
+        >
+          เมื่อลูกค้าระบุพื้นที่เหล่านี้ ระบบจะพิจารณาธุรกิจของคุณ
+        </span>
+        <label style={{ fontSize: '0.85rem' }}>จังหวัด</label>
+        <Select value={config.province} onChange={(e) => upd({ province: e.target.value })}>
+          <option value="">— เลือกจังหวัด —</option>
+          {THAI_PROVINCES.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </Select>
+        <label style={{ fontSize: '0.85rem' }}>พื้นที่หลัก / พื้นที่เพิ่มเติม</label>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <Input
+            value={areaInput}
+            placeholder="เช่น บางแสน"
+            onChange={(e) => setAreaInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                addArea();
+              }
+            }}
+            style={{ flex: 1, minWidth: 160 }}
+          />
+          <Button onClick={addArea}>+ เพิ่มพื้นที่</Button>
+        </div>
+        <ChipRow
+          values={config.areas}
+          onRemove={(v) => upd({ areas: config.areas.filter((x) => x !== v) })}
+        />
+      </Field>
+
+      <Field label="ธุรกิจของคุณให้บริการที่พักประเภทไหน?">
+        {suggestion.types.length > 0 && (
+          <span
+            style={{ display: 'block', fontSize: '0.8rem', color: colors.muted, marginBottom: 4 }}
+          >
+            พบจากที่พักของคุณ: {suggestion.types.join(', ')}
+          </span>
+        )}
+        {TYPE_OPTIONS.map((t) => (
+          <Toggle
+            key={t}
+            checked={config.types.includes(t)}
+            onChange={() => toggleType(t)}
+            label={t}
+          />
+        ))}
+      </Field>
+
+      <Field label="ลูกค้ามักใช้คำอะไรเวลาหาที่พักแบบคุณ?">
+        <span
+          style={{ display: 'block', fontSize: '0.8rem', color: colors.muted, marginBottom: 4 }}
+        >
+          ใส่เฉพาะคำที่เกี่ยวข้องกับธุรกิจจริงของคุณ
+        </span>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <Input
+            value={kwInput}
+            placeholder="เช่น บ้านพักบางแสน"
+            onChange={(e) => setKwInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                addKeyword();
+              }
+            }}
+            style={{ flex: 1, minWidth: 160 }}
+          />
+          <Button onClick={addKeyword}>+ เพิ่มคำ</Button>
+        </div>
+        <ChipRow
+          values={config.keywords}
+          onRemove={(v) => upd({ keywords: config.keywords.filter((x) => x !== v) })}
+        />
+      </Field>
+
+      <details style={{ marginBottom: '1rem' }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 600 }}>ตัวอย่างการจับคู่</summary>
+        <div style={{ marginTop: 8 }}>
+          <label style={{ fontSize: '0.85rem' }}>Lead ตัวอย่าง</label>
+          <Input value={sampleLead} onChange={(e) => setSampleLead(e.target.value)} />
+          <ul style={{ listStyle: 'none', padding: 0, marginTop: 8 }}>
+            {preview.length === 0 ? (
+              <li style={{ color: colors.muted }}>ยังไม่มีเกณฑ์การจับคู่</li>
+            ) : (
+              preview.map((l) => (
+                <li key={l.label} style={{ color: l.ok ? colors.ok : colors.muted }}>
+                  {l.ok ? '✓' : '·'} {l.label}
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+      </details>
+
+      {loaded && activeRules.length > 0 && (
+        <details style={{ marginBottom: '1rem' }}>
+          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>ข้อมูลขั้นสูง</summary>
+          <ul style={{ marginTop: 8 }}>
+            {activeRules.map((r) => (
+              <li key={r.id} style={{ fontSize: '0.85rem', color: colors.muted }}>
+                {dedupeTokens([r.ruleValue])[0]}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      <StickyBar>
+        <Button kind="primary" onClick={save} disabled={saveState === 'saving'}>
+          บันทึกการจับคู่
+        </Button>
+        <SaveStatus state={saveState} message={saveMsg} />
       </StickyBar>
     </Section>
   );
