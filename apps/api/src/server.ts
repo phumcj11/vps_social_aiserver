@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
+import multipart from '@fastify/multipart';
 import type { Store } from './store/types';
 import type { ApiEnv } from './lib/env';
 import { createLogger, type Logger } from './lib/logger';
@@ -10,6 +11,8 @@ import { registerAuthRoutes } from './auth/routes';
 import { registerWorkspaceRoutes } from './workspaces/routes';
 import { registerBusinessRoutes } from './businesses/routes';
 import { registerBusinessPropertyRoutes } from './business-property/routes';
+import { registerMediaRoutes } from './media/routes';
+import { MAX_IMAGE_BYTES } from './media/types';
 import { InMemoryBusinessPropertyStore } from './business-property/memory-store';
 import type { BusinessPropertyStore } from './business-property/store';
 import { registerFacebookRoutes } from './facebook/routes';
@@ -67,6 +70,8 @@ export interface ServerDeps {
   facebookDriver?: BrowserDriver;
   /** Injectable collector browser (tests provide a fake; runtime uses Playwright). */
   collectorBrowser?: CollectorBrowser;
+  /** Base dir for media storage (defaults to process.cwd()); tests inject a temp dir. */
+  mediaBaseDir?: string;
 }
 
 /**
@@ -122,6 +127,12 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   // Rate-limit foundation. Global disabled → applied only to routes that opt in
   // (register/login) via their per-route config.
   await app.register(rateLimit, { global: false });
+
+  // Multipart uploads (Media Library images only). Hard per-file size limit; a
+  // single file per request. Content is validated by magic bytes, not filename.
+  await app.register(multipart, {
+    limits: { fileSize: MAX_IMAGE_BYTES, files: 1, fields: 10 },
+  });
 
   // Consistent structured error responses. Unknown errors never leak internals.
   app.setErrorHandler((error: Error & { statusCode?: number }, _req, reply) => {
@@ -279,6 +290,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     env,
     logger,
   });
+  registerMediaRoutes(app, { store, bpStore, env, logger, baseDir: deps.mediaBaseDir });
   registerFacebookRoutes(app, { store, env, facebook });
   registerGroupRoutes(app, { store, env, groupValidation, audit });
   registerCollectorRoutes(app, { store, env, collector });

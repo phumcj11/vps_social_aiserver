@@ -7,6 +7,9 @@
  * a Facebook write, connects external AI, or enables any flag.
  */
 
+import type { ImageResponseMode } from '../media/types';
+export type { ImageResponseMode };
+
 export type Environment = 'test' | 'production';
 export type EntityStatus = 'active' | 'inactive' | 'archived';
 
@@ -63,6 +66,8 @@ export interface BusinessPolicies {
   noPropertyMatchStrategy: NoPropertyMatchStrategy;
   /** Future capability — near-match suggestions. Persisted but off by default. */
   allowNearMatchSuggestions: boolean;
+  /** Media Library (additive): whether/how an approved image may accompany a response. */
+  imageResponseMode: ImageResponseMode;
 }
 
 /** Property policy OVERRIDES — null means "inherit from the Business". */

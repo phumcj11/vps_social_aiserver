@@ -52,6 +52,7 @@ import {
   propertyChanged,
   type PriceDisplayMode,
 } from '../../../property-ui';
+import { MediaManager } from '../../../MediaManager';
 
 const TABS = [
   'ข้อมูลทั่วไป',
@@ -59,6 +60,7 @@ const TABS = [
   'ความจุ',
   'สิ่งอำนวยความสะดวก',
   'ราคา',
+  'รูปภาพ',
   'เนื้อหา',
   'นโยบายเฉพาะ',
   'ความพร้อม',
@@ -558,6 +560,15 @@ export default function PropertyEditPage() {
         </Section>
       )}
 
+      {tab === 'รูปภาพ' && (
+        <MediaManager
+          businessId={id}
+          propertyId={propertyId}
+          title="รูปภาพที่พัก"
+          helper="เลือกรูปตามสิ่งที่อยู่ในรูปจริง ระบบจะไม่ใช้รูปเป็นหลักฐานว่าที่พักมีสิ่งอำนวยความสะดวกนั้น ข้อมูลสิ่งอำนวยความสะดวกต้องมาจากข้อมูลที่พัก"
+        />
+      )}
+
       {tab === 'เนื้อหา' && (
         <Section>
           <Guidance text={PROPERTY_TAB_GUIDANCE['เนื้อหา']} />
@@ -704,16 +715,21 @@ export default function PropertyEditPage() {
         </Section>
       )}
 
-      <StickyBar>
-        <Button kind="primary" onClick={save} disabled={saveState === 'saving'}>
-          บันทึก
-        </Button>
-        {p.status === 'active' ? (
-          <Button onClick={() => setStatus('inactive')}>ปิดใช้งาน</Button>
-        ) : (
-          <Button onClick={() => setStatus('active')}>เปิดใช้งาน</Button>
-        )}
-      </StickyBar>
+      {/* The generic Property save is hidden on the รูปภาพ tab: images are saved
+          per-image inside MediaManager, so a page-level "บันทึก" there would be
+          misleading (it does not persist media metadata/permissions). */}
+      {tab !== 'รูปภาพ' && (
+        <StickyBar>
+          <Button kind="primary" onClick={save} disabled={saveState === 'saving'}>
+            บันทึก
+          </Button>
+          {p.status === 'active' ? (
+            <Button onClick={() => setStatus('inactive')}>ปิดใช้งาน</Button>
+          ) : (
+            <Button onClick={() => setStatus('active')}>เปิดใช้งาน</Button>
+          )}
+        </StickyBar>
+      )}
     </Page>
   );
 }

@@ -77,6 +77,8 @@ import {
   matchingSaveError,
   type MatchingConfig,
 } from '../business-matching-ui';
+import { MediaManager } from '../MediaManager';
+import { IMAGE_RESPONSE_OPTIONS } from '../media-ui';
 import { OnboardingChecklist } from '../onboarding';
 
 const TABS = [
@@ -87,6 +89,7 @@ const TABS = [
   'นโยบาย',
   'การจับคู่ลูกค้า',
   'กลยุทธ์การตอบ Lead',
+  'รูปภาพ',
   'ความพร้อมใช้งาน',
   'ประวัติ',
 ];
@@ -241,6 +244,14 @@ export default function BusinessDetailPage() {
           policies={policies}
           onChange={reload}
           onGoPolicies={() => setTab('นโยบาย')}
+        />
+      )}
+
+      {tab === 'รูปภาพ' && (
+        <MediaManager
+          businessId={id}
+          title="รูปภาพธุรกิจ"
+          helper="ใช้สำหรับแนะนำธุรกิจเมื่อยังไม่มีที่พักหลังใดตรงความต้องการ"
         />
       )}
 
@@ -612,6 +623,7 @@ function PoliciesTab({
       responseSlaMinutes: 10,
       noPropertyMatchStrategy: 'HUMAN_REVIEW',
       allowNearMatchSuggestions: false,
+      imageResponseMode: 'HUMAN_REVIEW_ONLY',
     },
   );
   // Prohibited claims split into recommended presets (checkboxes) + custom lines.
@@ -1154,6 +1166,9 @@ function ResponseStrategyTab({
   const [strategy, setStrategy] = useState<NoPropertyMatchStrategyValue>(
     policies?.noPropertyMatchStrategy ?? 'HUMAN_REVIEW',
   );
+  const [imageMode, setImageMode] = useState<string>(
+    policies?.imageResponseMode ?? 'HUMAN_REVIEW_ONLY',
+  );
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
@@ -1178,6 +1193,7 @@ function ResponseStrategyTab({
       await api.putBusinessPolicies(businessId, {
         ...policies!,
         noPropertyMatchStrategy: strategy,
+        imageResponseMode: imageMode as BusinessPolicies['imageResponseMode'],
       });
       await onChange();
       setSaveState('saved');
@@ -1214,6 +1230,30 @@ function ResponseStrategyTab({
           <input type="checkbox" disabled checked={false} readOnly />
           อนุญาตให้เสนอที่พักใกล้เคียง — กำลังพัฒนา ยังไม่เปิดใช้งาน
         </label>
+      </Field>
+
+      <Field label="การแนบรูปภาพในคำตอบ">
+        <Select
+          value={imageMode}
+          onChange={(e) => {
+            setImageMode(e.target.value);
+            if (saveState !== 'idle') {
+              setSaveState('idle');
+              setSaveMsg(null);
+            }
+          }}
+        >
+          {IMAGE_RESPONSE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+              {o.recommended ? ' · แนะนำ' : ''}
+            </option>
+          ))}
+        </Select>
+        <span style={{ display: 'block', fontSize: '0.8rem', color: colors.muted }}>
+          {IMAGE_RESPONSE_OPTIONS.find((o) => o.value === imageMode)?.description}{' '}
+          ระบบจะไม่โพสต์รูปออกภายนอกในขั้นนี้
+        </span>
       </Field>
 
       <details style={{ marginBottom: '1rem' }}>

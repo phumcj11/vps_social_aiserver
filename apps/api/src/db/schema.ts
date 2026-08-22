@@ -195,6 +195,48 @@ export type BusinessKnowledgeRow = typeof businessKnowledge.$inferSelect;
 export type BusinessMatchingRuleRow = typeof businessMatchingRules.$inferSelect;
 
 /**
+ * ── Media Library (images) ───────────────────────────────────────────────────
+ *
+ * Owner-uploaded images for a Business or a specific Property. Images NEVER
+ * establish a fact — they only illustrate a fact already stored elsewhere. The
+ * bytes live outside the DB under storage/media/ (server-generated key); this
+ * row holds only safe metadata + approval flags. No external publishing here.
+ */
+export const mediaAssets = mysqlTable(
+  'media_assets',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    workspaceId: varchar('workspace_id', { length: 36 })
+      .notNull()
+      .references(() => workspaces.id),
+    businessId: varchar('business_id', { length: 36 })
+      .notNull()
+      .references(() => businesses.id),
+    propertyId: varchar('property_id', { length: 36 }), // null = business-level asset
+    mediaType: varchar('media_type', { length: 20 }).notNull().default('IMAGE'),
+    storageKey: varchar('storage_key', { length: 500 }).notNull(),
+    originalFilename: varchar('original_filename', { length: 300 }).notNull(),
+    mimeType: varchar('mime_type', { length: 60 }).notNull(),
+    sizeBytes: int('size_bytes').notNull(),
+    category: varchar('category', { length: 30 }).notNull().default('other'),
+    caption: varchar('caption', { length: 300 }),
+    status: varchar('status', { length: 20 }).notNull().default('ACTIVE'),
+    approvedForDrafts: boolean('approved_for_drafts').notNull().default(false),
+    approvedForPublicResponse: boolean('approved_for_public_response').notNull().default(false),
+    ownerVerified: boolean('owner_verified').notNull().default(false),
+    width: int('width'),
+    height: int('height'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => ({
+    businessIdx: index('media_assets_business_idx').on(table.businessId),
+    propertyIdx: index('media_assets_property_idx').on(table.propertyId),
+  }),
+);
+export type MediaAssetRow = typeof mediaAssets.$inferSelect;
+
+/**
  * ── SPRINT 004: Facebook Connection Foundation ───────────────────────────────
  *
  * Stores ONLY safe connection metadata for a workspace's single Facebook
@@ -1148,6 +1190,8 @@ export const businessPolicies = mysqlTable(
     // Response Strategy (additive): behavior on Business MATCH + NO_PROPERTY_MATCH.
     noPropertyMatchStrategy: varchar('no_property_match_strategy', { length: 40 }),
     allowNearMatchSuggestions: boolean('allow_near_match_suggestions').notNull().default(false),
+    // Media Library (additive): whether/how an approved image may accompany a response.
+    imageResponseMode: varchar('image_response_mode', { length: 40 }),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow().onUpdateNow(),
   },

@@ -6,9 +6,11 @@ import {
   businessPolicies as businessPoliciesTable,
   businesses as businessesTable,
   businessAuditEvents as auditTable,
+  mediaAssets as mediaAssetsTable,
   type PropertyRow,
   type BusinessContactRow,
   type BusinessPolicyRow,
+  type MediaAssetRow,
 } from '../db/schema';
 import { newId } from '../lib/tokens';
 import type {
@@ -19,6 +21,7 @@ import type {
   EntityStatus,
 } from './types';
 import { DEFAULT_NO_PROPERTY_MATCH_STRATEGY } from './types';
+import { DEFAULT_IMAGE_RESPONSE_MODE } from '../media/types';
 import {
   type BusinessPropertyStore,
   type CreatePropertyInput,
@@ -27,6 +30,9 @@ import {
   type UpdateContactPatch,
   type AuditEventInput,
   type BusinessAuditEventRecord,
+  type MediaAsset,
+  type CreateMediaAssetInput,
+  type UpdateMediaAssetPatch,
   emptyPropertyDefaults,
   applyPropertyPatch,
 } from './store';
@@ -219,6 +225,7 @@ export class DrizzleBusinessPropertyStore implements BusinessPropertyStore {
       responseSlaMinutes: policies.responseSlaMinutes,
       noPropertyMatchStrategy: policies.noPropertyMatchStrategy,
       allowNearMatchSuggestions: policies.allowNearMatchSuggestions,
+      imageResponseMode: policies.imageResponseMode,
     };
     if (existing) {
       await this.db
@@ -291,6 +298,106 @@ export class DrizzleBusinessPropertyStore implements BusinessPropertyStore {
       createdAt: r.createdAt,
     }));
   }
+
+  // ── Media assets ──────────────────────────────────────────────────────────
+  async createMediaAsset(input: CreateMediaAssetInput): Promise<MediaAsset> {
+    await this.db.insert(mediaAssetsTable).values({
+      id: input.id,
+      workspaceId: input.workspaceId,
+      businessId: input.businessId,
+      propertyId: input.propertyId,
+      mediaType: 'IMAGE',
+      storageKey: input.storageKey,
+      originalFilename: input.originalFilename,
+      mimeType: input.mimeType,
+      sizeBytes: input.sizeBytes,
+      category: input.category,
+      caption: input.caption,
+      status: 'ACTIVE',
+      approvedForDrafts: false,
+      approvedForPublicResponse: false,
+      ownerVerified: false,
+      width: input.width,
+      height: input.height,
+    });
+    return (await this.getMediaAssetById(input.id))!;
+  }
+  async getMediaAssetById(id: string): Promise<MediaAsset | null> {
+    const [row] = await this.db
+      .select()
+      .from(mediaAssetsTable)
+      .where(eq(mediaAssetsTable.id, id))
+      .limit(1);
+    return row ? fromMediaRow(row) : null;
+  }
+  async listMediaByBusiness(businessId: string): Promise<MediaAsset[]> {
+    const rows = await this.db
+      .select()
+      .from(mediaAssetsTable)
+      .where(eq(mediaAssetsTable.businessId, businessId))
+      .orderBy(desc(mediaAssetsTable.createdAt));
+    return rows.map(fromMediaRow);
+  }
+  async listMediaByProperty(propertyId: string): Promise<MediaAsset[]> {
+    const rows = await this.db
+      .select()
+      .from(mediaAssetsTable)
+      .where(eq(mediaAssetsTable.propertyId, propertyId))
+      .orderBy(desc(mediaAssetsTable.createdAt));
+    return rows.map(fromMediaRow);
+  }
+  async listSelectableMediaByBusiness(businessId: string): Promise<MediaAsset[]> {
+    const rows = await this.db
+      .select()
+      .from(mediaAssetsTable)
+      .where(
+        and(
+          eq(mediaAssetsTable.businessId, businessId),
+          eq(mediaAssetsTable.status, 'ACTIVE'),
+          eq(mediaAssetsTable.ownerVerified, true),
+          eq(mediaAssetsTable.approvedForDrafts, true),
+        ),
+      );
+    return rows.map(fromMediaRow);
+  }
+  async updateMediaAsset(id: string, patch: UpdateMediaAssetPatch): Promise<MediaAsset | null> {
+    const set: Partial<typeof mediaAssetsTable.$inferInsert> = {};
+    if (patch.category !== undefined) set.category = patch.category;
+    if (patch.caption !== undefined) set.caption = patch.caption;
+    if (patch.status !== undefined) set.status = patch.status;
+    if (patch.approvedForDrafts !== undefined) set.approvedForDrafts = patch.approvedForDrafts;
+    if (patch.approvedForPublicResponse !== undefined)
+      set.approvedForPublicResponse = patch.approvedForPublicResponse;
+    if (patch.ownerVerified !== undefined) set.ownerVerified = patch.ownerVerified;
+    if (Object.keys(set).length > 0) {
+      await this.db.update(mediaAssetsTable).set(set).where(eq(mediaAssetsTable.id, id));
+    }
+    return this.getMediaAssetById(id);
+  }
+}
+
+function fromMediaRow(row: MediaAssetRow): MediaAsset {
+  return {
+    id: row.id,
+    workspaceId: row.workspaceId,
+    businessId: row.businessId,
+    propertyId: row.propertyId,
+    mediaType: 'IMAGE',
+    storageKey: row.storageKey,
+    originalFilename: row.originalFilename,
+    mimeType: row.mimeType as MediaAsset['mimeType'],
+    sizeBytes: row.sizeBytes,
+    category: row.category as MediaAsset['category'],
+    caption: row.caption,
+    status: row.status as MediaAsset['status'],
+    approvedForDrafts: Boolean(row.approvedForDrafts),
+    approvedForPublicResponse: Boolean(row.approvedForPublicResponse),
+    ownerVerified: Boolean(row.ownerVerified),
+    width: row.width,
+    height: row.height,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
 }
 
 // ── Row ↔ domain mappers ──────────────────────────────────────────────────────
@@ -415,5 +522,8 @@ function fromPolicyRow(row: BusinessPolicyRow): BusinessPolicies {
       (row.noPropertyMatchStrategy as BusinessPolicies['noPropertyMatchStrategy']) ??
       DEFAULT_NO_PROPERTY_MATCH_STRATEGY,
     allowNearMatchSuggestions: Boolean(row.allowNearMatchSuggestions),
+    imageResponseMode:
+      (row.imageResponseMode as BusinessPolicies['imageResponseMode']) ??
+      DEFAULT_IMAGE_RESPONSE_MODE,
   };
 }

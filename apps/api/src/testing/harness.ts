@@ -20,6 +20,8 @@ export interface TestAppOptions {
   envOverrides?: Record<string, string>;
   /** Optional async DB health probe (for health-endpoint tests). */
   dbHealth?: () => Promise<boolean>;
+  /** Base dir for media storage (defaults to an isolated temp dir). */
+  mediaBaseDir?: string;
 }
 
 /** Build an isolated test app backed by an in-memory store (no MySQL). */
@@ -28,6 +30,7 @@ export async function makeTestApp(opts: TestAppOptions = {}): Promise<{
   store: InMemoryStore;
   bpStore: InMemoryBusinessPropertyStore;
   profileRoot: string;
+  mediaBaseDir: string;
 }> {
   const store = new InMemoryStore();
   const bpStore = new InMemoryBusinessPropertyStore();
@@ -53,6 +56,7 @@ export async function makeTestApp(opts: TestAppOptions = {}): Promise<{
     OPERATIONS_STATE_FILE: stateFile,
     ...(opts.envOverrides ?? {}),
   });
+  const mediaBaseDir = opts.mediaBaseDir ?? mkdtempSync(join(tmpdir(), 'kmkt-media-'));
   const app = await buildServer({
     store,
     bpStore,
@@ -61,8 +65,9 @@ export async function makeTestApp(opts: TestAppOptions = {}): Promise<{
     facebookDriver: opts.facebookDriver,
     collectorBrowser: opts.collectorBrowser,
     dbHealth: opts.dbHealth,
+    mediaBaseDir,
   });
-  return { app, store, bpStore, profileRoot };
+  return { app, store, bpStore, profileRoot, mediaBaseDir };
 }
 
 const COOKIE_NAME = 'kmkt_session';

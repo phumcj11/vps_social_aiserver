@@ -9,6 +9,7 @@ import { createAuthenticate, createCsrfGuard, noStore } from '../lib/http';
 import type { BusinessPropertyStore } from './store';
 import type { Property, BusinessPolicies, BusinessReadinessSnapshot } from './types';
 import { DEFAULT_NO_PROPERTY_MATCH_STRATEGY } from './types';
+import { DEFAULT_IMAGE_RESPONSE_MODE } from '../media/types';
 import { evaluateBusinessReadiness, evaluatePropertyReadiness } from './readiness';
 import { resolvePropertyPolicies } from './policies';
 import { isValidContactValue, publicContactChannel } from './contacts';
@@ -127,6 +128,9 @@ const policiesSchema = z.object({
     .enum(['DO_NOT_RESPOND', 'DRAFT_BUSINESS_ONLY', 'HUMAN_REVIEW'])
     .optional(),
   allowNearMatchSuggestions: z.boolean().optional(),
+  imageResponseMode: z
+    .enum(['OFF', 'MATCHED_PROPERTY_ONLY', 'BUSINESS_FALLBACK', 'HUMAN_REVIEW_ONLY'])
+    .optional(),
 });
 
 function publicProperty(p: Property) {
@@ -258,6 +262,7 @@ export function registerBusinessPropertyRoutes(
         noPropertyMatchStrategy:
           parsed.data.noPropertyMatchStrategy ?? DEFAULT_NO_PROPERTY_MATCH_STRATEGY,
         allowNearMatchSuggestions: parsed.data.allowNearMatchSuggestions ?? false,
+        imageResponseMode: parsed.data.imageResponseMode ?? DEFAULT_IMAGE_RESPONSE_MODE,
       };
       const saved = await bpStore.upsertBusinessPolicies(id, policies);
       await audit(business.workspaceId, 'PolicyChanged', req.authUser!.email, { businessId: id });

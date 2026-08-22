@@ -11,6 +11,8 @@ import {
   type ActionJob,
 } from '../../../../lib/api';
 import { Nav } from '../../../../components/Nav';
+import { MediaThumb } from '../../businesses/MediaManager';
+import { mediaReasonThai, noMediaReasonThai } from '../../businesses/media-ui';
 
 interface DraftView {
   id: string;
@@ -102,6 +104,10 @@ export default function ReviewDetailPage() {
     Awaited<ReturnType<typeof api.getReview>>['approvedContacts']
   >([]);
   const [events, setEvents] = useState<ReviewEvent[]>([]);
+  const [mediaSuggestion, setMediaSuggestion] = useState<Awaited<
+    ReturnType<typeof api.mediaSuggestion>
+  > | null>(null);
+  const [useImage, setUseImage] = useState(true);
   const [actionJob, setActionJob] = useState<ActionJob | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -122,6 +128,11 @@ export default function ReviewDetailPage() {
     setApprovedContacts(res.approvedContacts);
     setEvents(res.events);
     setEditText(res.review.editedContent ?? res.draft?.content ?? '');
+    // Deterministic media suggestion for this match (read-only; never published).
+    if (res.business?.id && res.match?.id) {
+      const sug = await api.mediaSuggestion(res.business.id, res.match.id).catch(() => null);
+      setMediaSuggestion(sug);
+    }
     // Show an existing Action Job for this review, if any.
     try {
       const list = await api.listActions({ reviewTaskId: id });
@@ -319,6 +330,63 @@ export default function ReviewDetailPage() {
             ))
           )}
         </div>
+      </section>
+
+      <section style={{ marginBottom: '1.25rem' }}>
+        <h2>รูปภาพที่แนะนำ</h2>
+        {mediaSuggestion?.suggestion ? (
+          <div
+            style={{
+              display: 'flex',
+              gap: 12,
+              border: '1px solid #cfe8d4',
+              background: '#f3faf4',
+              borderRadius: 8,
+              padding: '0.75rem',
+              flexWrap: 'wrap',
+              opacity: useImage ? 1 : 0.5,
+            }}
+          >
+            <MediaThumb
+              fileUrl={mediaSuggestion.suggestion.fileUrl}
+              alt={mediaSuggestion.suggestion.caption ?? 'suggested image'}
+            />
+            <div style={{ flex: 1, minWidth: 220 }}>
+              {mediaSuggestion.suggestion.caption ? (
+                <p style={{ margin: '0 0 0.25rem' }}>{mediaSuggestion.suggestion.caption}</p>
+              ) : null}
+              <p style={{ margin: '0 0 0.25rem', fontWeight: 600 }}>ทำไมแนะนำรูปนี้:</p>
+              <ul style={{ margin: '0 0 0.4rem', paddingLeft: '1.2rem' }}>
+                {mediaSuggestion.reasons.map((r) => (
+                  <li key={r} style={{ color: '#0a7d28' }}>
+                    ✓ {mediaReasonThai(r)}
+                  </li>
+                ))}
+              </ul>
+              <div style={{ fontSize: '0.85rem', color: '#666' }}>
+                Draft ✓ · การตอบสาธารณะ{' '}
+                {mediaSuggestion.publicResponseApproved ? '✓' : '✗ (ยังไม่อนุมัติ)'}
+              </div>
+              <div style={{ fontSize: '0.8rem', color: '#b26a00', marginTop: 4 }}>
+                ระบบจะไม่โพสต์รูปออกภายนอก การตัดสินใจใช้รูปอยู่ที่คุณ
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                <button type="button" onClick={() => setUseImage(true)} disabled={useImage}>
+                  ใช้รูปนี้
+                </button>
+                <button type="button" onClick={() => setUseImage(false)} disabled={!useImage}>
+                  ไม่ใช้รูป
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <p style={{ color: '#666' }}>
+            {mediaSuggestion
+              ? `ไม่มีรูปที่แนะนำ — ${noMediaReasonThai(mediaSuggestion.reasons[0] ?? '')} (ข้อความยังใช้งานได้)`
+              : '—'}
+          </p>
+        )}
       </section>
 
       <section style={{ marginBottom: '1.25rem' }}>

@@ -6,6 +6,8 @@ import type {
   ContactChannelType,
   EntityStatus,
 } from './types';
+import type { MediaAsset, CreateMediaAssetInput, UpdateMediaAssetPatch } from '../media/types';
+export type { MediaAsset, CreateMediaAssetInput, UpdateMediaAssetPatch };
 
 /**
  * Persistence boundary for the Business+Property domain (SPRINT 015).
@@ -105,6 +107,15 @@ export interface BusinessPropertyStore {
   // Audit
   recordAudit(input: AuditEventInput): Promise<BusinessAuditEventRecord>;
   listAuditByBusiness(businessId: string, limit?: number): Promise<BusinessAuditEventRecord[]>;
+
+  // Media assets (images) — see media/*
+  createMediaAsset(input: CreateMediaAssetInput): Promise<MediaAsset>;
+  getMediaAssetById(id: string): Promise<MediaAsset | null>;
+  listMediaByBusiness(businessId: string): Promise<MediaAsset[]>;
+  listMediaByProperty(propertyId: string): Promise<MediaAsset[]>;
+  /** Selection pool: ACTIVE + ownerVerified + approvedForDrafts, business + its properties. */
+  listSelectableMediaByBusiness(businessId: string): Promise<MediaAsset[]>;
+  updateMediaAsset(id: string, patch: UpdateMediaAssetPatch): Promise<MediaAsset | null>;
 }
 
 // ── Defaults / builders ───────────────────────────────────────────────────────

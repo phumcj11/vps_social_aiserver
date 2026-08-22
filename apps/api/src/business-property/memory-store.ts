@@ -13,6 +13,9 @@ import {
   type UpdateContactPatch,
   type AuditEventInput,
   type BusinessAuditEventRecord,
+  type MediaAsset,
+  type CreateMediaAssetInput,
+  type UpdateMediaAssetPatch,
   emptyPropertyDefaults,
   applyPropertyPatch,
 } from './store';
@@ -189,6 +192,57 @@ export class InMemoryBusinessPropertyStore implements BusinessPropertyStore {
       .slice(-limit)
       .reverse()
       .map((a) => ({ ...a }));
+  }
+
+  // ── Media assets ──────────────────────────────────────────────────────────
+  private media = new Map<string, MediaAsset>();
+
+  async createMediaAsset(input: CreateMediaAssetInput): Promise<MediaAsset> {
+    const now = new Date();
+    const asset: MediaAsset = {
+      ...input,
+      mediaType: 'IMAGE',
+      status: 'ACTIVE',
+      approvedForDrafts: false,
+      approvedForPublicResponse: false,
+      ownerVerified: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.media.set(asset.id, asset);
+    return { ...asset };
+  }
+  async getMediaAssetById(id: string): Promise<MediaAsset | null> {
+    const a = this.media.get(id);
+    return a ? { ...a } : null;
+  }
+  async listMediaByBusiness(businessId: string): Promise<MediaAsset[]> {
+    return [...this.media.values()]
+      .filter((a) => a.businessId === businessId)
+      .map((a) => ({ ...a }));
+  }
+  async listMediaByProperty(propertyId: string): Promise<MediaAsset[]> {
+    return [...this.media.values()]
+      .filter((a) => a.propertyId === propertyId)
+      .map((a) => ({ ...a }));
+  }
+  async listSelectableMediaByBusiness(businessId: string): Promise<MediaAsset[]> {
+    return [...this.media.values()]
+      .filter(
+        (a) =>
+          a.businessId === businessId &&
+          a.status === 'ACTIVE' &&
+          a.ownerVerified &&
+          a.approvedForDrafts,
+      )
+      .map((a) => ({ ...a }));
+  }
+  async updateMediaAsset(id: string, patch: UpdateMediaAssetPatch): Promise<MediaAsset | null> {
+    const a = this.media.get(id);
+    if (!a) return null;
+    const next: MediaAsset = { ...a, ...patch, updatedAt: new Date() };
+    this.media.set(id, next);
+    return { ...next };
   }
 }
 

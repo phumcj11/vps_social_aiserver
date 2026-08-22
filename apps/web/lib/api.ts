@@ -115,6 +115,36 @@ export type PromotionPolicy = 'NONE' | 'APPROVED_ONLY' | 'MANUAL_CONFIRMATION';
 export type BookingPolicy = 'CONTACT_ONLY' | 'LINE' | 'PHONE' | 'WEBSITE' | 'MANUAL';
 
 export type NoPropertyMatchStrategy = 'DO_NOT_RESPOND' | 'DRAFT_BUSINESS_ONLY' | 'HUMAN_REVIEW';
+export type ImageResponseMode =
+  'OFF' | 'MATCHED_PROPERTY_ONLY' | 'BUSINESS_FALLBACK' | 'HUMAN_REVIEW_ONLY';
+
+export interface MediaAsset {
+  id: string;
+  businessId: string;
+  propertyId: string | null;
+  category: string;
+  caption: string | null;
+  status: 'ACTIVE' | 'ARCHIVED';
+  approvedForDrafts: boolean;
+  approvedForPublicResponse: boolean;
+  ownerVerified: boolean;
+  mimeType: string;
+  sizeBytes: number;
+  width: number | null;
+  height: number | null;
+  originalFilename: string;
+  fileUrl: string;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface MediaUpdate {
+  category: string;
+  caption: string | null;
+  status: 'ACTIVE' | 'ARCHIVED';
+  approvedForDrafts: boolean;
+  approvedForPublicResponse: boolean;
+  ownerVerified: boolean;
+}
 
 export interface BusinessPolicies {
   availabilityPolicy: AvailabilityPolicy;
@@ -129,6 +159,7 @@ export interface BusinessPolicies {
   responseSlaMinutes: number | null;
   noPropertyMatchStrategy: NoPropertyMatchStrategy;
   allowNearMatchSuggestions: boolean;
+  imageResponseMode: ImageResponseMode;
 }
 
 export interface PropertyPolicyOverrides {
@@ -662,6 +693,63 @@ export const api = {
     }),
   deleteRule: (id: string, ruleId: string) =>
     request<{ ok: boolean }>(`/businesses/${id}/matching-rules/${ruleId}`, { method: 'DELETE' }),
+
+  // ── Media Library (images) ──────────────────────────────────────────────────
+  listMedia: (id: string) =>
+    request<{ media: MediaAsset[] }>(`/businesses/${id}/media`, { method: 'GET' }),
+  uploadMedia: async (
+    id: string,
+    file: File,
+    fields: { category: string; propertyId?: string; caption?: string },
+  ): Promise<{ media: MediaAsset }> => {
+    const fd = new FormData();
+    fd.append('category', fields.category);
+    if (fields.propertyId) fd.append('propertyId', fields.propertyId);
+    if (fields.caption) fd.append('caption', fields.caption);
+    fd.append('file', file);
+    // Do NOT set Content-Type — the browser sets the multipart boundary. Origin
+    // is sent automatically (CSRF guard checks it); credentials carry the session.
+    const res = await fetch(`${BASE}/businesses/${id}/media`, {
+      method: 'POST',
+      credentials: 'include',
+      body: fd,
+    });
+    const text = await res.text();
+    const data: unknown = text ? JSON.parse(text) : {};
+    if (!res.ok) {
+      const body = data as ErrorBody;
+      throw new ApiRequestError(
+        body.error?.message ?? 'Upload failed',
+        res.status,
+        body.error?.code,
+      );
+    }
+    return data as { media: MediaAsset };
+  },
+  updateMedia: (id: string, assetId: string, patch: Partial<MediaUpdate>) =>
+    request<{ media: MediaAsset }>(`/businesses/${id}/media/${assetId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
+  // Fetch an auth-gated media file as an object URL (the file route needs the
+  // session cookie; a bare cross-origin <img src> would not send it).
+  fetchMediaBlobUrl: async (fileUrl: string): Promise<string> => {
+    const res = await fetch(`${BASE}${fileUrl}`, { credentials: 'include' });
+    if (!res.ok) throw new ApiRequestError('Image load failed', res.status);
+    return URL.createObjectURL(await res.blob());
+  },
+  mediaSuggestion: (id: string, businessMatchId: string) =>
+    request<{
+      suggestion: MediaAsset | null;
+      reasons: string[];
+      imageResponseMode: string;
+      publicResponseApproved: boolean;
+    }>(
+      `/businesses/${id}/media/suggestion?businessMatchId=${encodeURIComponent(businessMatchId)}`,
+      {
+        method: 'GET',
+      },
+    ),
 
   // ── Facebook connection ────────────────────────────────────────────────────
   getFacebookAccount: () =>
