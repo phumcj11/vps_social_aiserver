@@ -74,6 +74,8 @@ export function mediaReasonThai(code: string): string {
       return 'เจ้าของยืนยันรูปแล้ว';
     case 'APPROVED_FOR_DRAFTS':
       return 'อนุญาตให้ใช้ประกอบข้อความ';
+    case 'REQUESTED_REQUIREMENT':
+      return arg === 'private_pool' ? 'ลูกค้าต้องการสระ' : 'ตรงกับสิ่งที่ลูกค้าต้องการ';
     case 'REQUESTED_AMENITY':
       return arg === 'karaoke'
         ? 'ลูกค้าระบุว่าต้องการคาราโอเกะ'

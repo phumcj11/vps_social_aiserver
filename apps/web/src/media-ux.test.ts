@@ -40,6 +40,12 @@ describe('media owner-facing labels', () => {
     expect(mediaReasonThai('REQUESTED_AMENITY:privatePool')).not.toContain('มีสระ');
   });
 
+  it('maps the hard pool requirement reason to "ลูกค้าต้องการสระ"', () => {
+    expect(mediaReasonThai('REQUESTED_REQUIREMENT:private_pool')).toBe('ลูกค้าต้องการสระ');
+    // Still describes the request, not a proven property fact.
+    expect(mediaReasonThai('REQUESTED_REQUIREMENT:private_pool')).not.toContain('มีสระ');
+  });
+
   it('explains why no image was chosen (draft still valid)', () => {
     expect(noMediaReasonThai('MODE_OFF')).toContain('ปิด');
     expect(noMediaReasonThai('NO_APPROVED_BUSINESS_IMAGE')).toContain('ยังไม่มี');

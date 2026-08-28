@@ -11,8 +11,30 @@ export interface MediaSelectionContext {
   imageResponseMode: ImageResponseMode;
   /** The persisted Property match for this Business match, if any. */
   propertyMatch: { decision: 'MATCH' | 'NO_MATCH'; propertyId: string | null } | null;
-  /** Canonical requested amenity keys parsed from the Opportunity (e.g. privatePool). */
+  /** Canonical requested amenity keys parsed from the Opportunity (e.g. karaoke). */
   requestedAmenities: string[];
+  /**
+   * Hard requirement signals from the parser. These add media RELEVANCE +
+   * explainability only (e.g. a requested pool → prefer/explain a pool image);
+   * they never make a Property match, never create an amenity fact, and never
+   * change eligibility. Only needsPrivatePool maps to a canonical media category
+   * (pool); beach/river have no clean category so they are intentionally ignored.
+   */
+  requirementFlags?: {
+    needsPrivatePool?: boolean;
+    needsBeach?: boolean;
+    needsRiver?: boolean;
+  };
+}
+
+/** Hard requirement signals → (category, reason code). Pool only. */
+function hardRequirementCategories(
+  flags: MediaSelectionContext['requirementFlags'],
+): Array<{ category: MediaCategory; reason: string }> {
+  const out: Array<{ category: MediaCategory; reason: string }> = [];
+  if (flags?.needsPrivatePool)
+    out.push({ category: 'pool', reason: 'REQUESTED_REQUIREMENT:private_pool' });
+  return out;
 }
 
 export interface MediaSelectionResult {
@@ -81,13 +103,18 @@ export function selectMedia(
   const isPropertyMatch =
     ctx.propertyMatch?.decision === 'MATCH' && Boolean(ctx.propertyMatch.propertyId);
 
+  const hardReqs = hardRequirementCategories(ctx.requirementFlags);
+  const hardCats = hardReqs.map((h) => h.category);
+
   if (isPropertyMatch) {
     const propertyId = ctx.propertyMatch!.propertyId!;
     const propertyPool = pool.filter((a) => a.propertyId === propertyId);
-    // Requested-amenity categories first (in requested order), then fallbacks.
+    // Hard-requirement categories first (e.g. requested pool → prefer a pool
+    // image), then soft requested-amenity categories, then generic fallbacks.
     const order = [
-      ...requestedCats,
-      ...PROPERTY_FALLBACK_ORDER.filter((c) => !requestedCats.includes(c)),
+      ...hardCats,
+      ...requestedCats.filter((c) => !hardCats.includes(c)),
+      ...PROPERTY_FALLBACK_ORDER.filter((c) => !hardCats.includes(c) && !requestedCats.includes(c)),
     ];
     const hit = pickByCategoryOrder(propertyPool, order);
     if (!hit) {
@@ -100,6 +127,9 @@ export function selectMedia(
       'OWNER_VERIFIED',
       'APPROVED_FOR_DRAFTS',
     ];
+    // Explainability: why this category is relevant to the customer's request.
+    const hardReason = hardReqs.find((h) => h.category === hit.category)?.reason;
+    if (hardReason) reasons.splice(1, 0, hardReason);
     if (requestedCats.includes(hit.category)) {
       const amenity = ctx.requestedAmenities.find((k) => AMENITY_CATEGORY[k] === hit.category);
       if (amenity) reasons.splice(1, 0, `REQUESTED_AMENITY:${amenity}`);

@@ -230,3 +230,108 @@ describe('media selection — mode + safety invariants', () => {
     expect(r.selected?.approvedForPublicResponse).toBe(false); // still not public-approved
   });
 });
+
+describe('hard requirement explainability (needsPrivatePool → pool)', () => {
+  it('emits REQUESTED_REQUIREMENT:private_pool when a pool is requested as a hard signal', () => {
+    // Mirrors the live fixture: pool is the hard needsPrivatePool signal (NOT in
+    // requestedAmenities), karaoke is the soft requestedAmenity.
+    const poolImg = asset({ id: 'p', propertyId: 'villa-b', category: 'pool' });
+    const r = selectMedia([poolImg], {
+      imageResponseMode: 'HUMAN_REVIEW_ONLY',
+      propertyMatch: { decision: 'MATCH', propertyId: 'villa-b' },
+      requestedAmenities: ['karaoke'],
+      requirementFlags: { needsPrivatePool: true },
+    });
+    expect(r.selected?.id).toBe('p');
+    expect(r.reasons).toContain('PROPERTY_MATCH_IMAGE');
+    expect(r.reasons).toContain('REQUESTED_REQUIREMENT:private_pool');
+    expect(r.reasons).toContain('CATEGORY:pool');
+    expect(r.reasons).toContain('OWNER_VERIFIED');
+    expect(r.reasons).toContain('APPROVED_FOR_DRAFTS');
+  });
+
+  it('selected media ID is UNCHANGED for the validated fixture (single pool asset)', () => {
+    const poolImg = asset({ id: 'operator', propertyId: 'villa-b', category: 'pool' });
+    const before = selectMedia([poolImg], {
+      imageResponseMode: 'HUMAN_REVIEW_ONLY',
+      propertyMatch: { decision: 'MATCH', propertyId: 'villa-b' },
+      requestedAmenities: ['karaoke'],
+    });
+    const after = selectMedia([poolImg], {
+      imageResponseMode: 'HUMAN_REVIEW_ONLY',
+      propertyMatch: { decision: 'MATCH', propertyId: 'villa-b' },
+      requestedAmenities: ['karaoke'],
+      requirementFlags: { needsPrivatePool: true },
+    });
+    expect(before.selected?.id).toBe('operator');
+    expect(after.selected?.id).toBe('operator'); // outcome unchanged, only reasons enriched
+    expect(before.reasons).not.toContain('REQUESTED_REQUIREMENT:private_pool');
+    expect(after.reasons).toContain('REQUESTED_REQUIREMENT:private_pool');
+  });
+
+  it('karaoke soft-amenity behavior is unchanged', () => {
+    const karaoke = asset({ id: 'k', propertyId: 'villa-b', category: 'karaoke' });
+    const r = selectMedia([karaoke], {
+      imageResponseMode: 'HUMAN_REVIEW_ONLY',
+      propertyMatch: { decision: 'MATCH', propertyId: 'villa-b' },
+      requestedAmenities: ['karaoke'],
+      requirementFlags: { needsPrivatePool: true },
+    });
+    expect(r.selected?.id).toBe('k');
+    expect(r.reasons).toContain('REQUESTED_AMENITY:karaoke');
+  });
+
+  it('hard requirement does NOT make Property media eligible on NO_PROPERTY_MATCH', () => {
+    const poolImg = asset({ id: 'p', propertyId: 'villa-b', category: 'pool' });
+    const r = selectMedia([poolImg], {
+      imageResponseMode: 'HUMAN_REVIEW_ONLY',
+      propertyMatch: { decision: 'NO_MATCH', propertyId: null },
+      requestedAmenities: ['karaoke'],
+      requirementFlags: { needsPrivatePool: true },
+    });
+    expect(r.selected).toBeNull(); // property image never used on NO_PROPERTY_MATCH
+  });
+
+  it('hard requirement does not override eligibility (unverified pool stays excluded)', () => {
+    const unverified = asset({
+      id: 'u',
+      propertyId: 'villa-b',
+      category: 'pool',
+      ownerVerified: false,
+    });
+    const r = selectMedia([unverified], {
+      imageResponseMode: 'HUMAN_REVIEW_ONLY',
+      propertyMatch: { decision: 'MATCH', propertyId: 'villa-b' },
+      requestedAmenities: [],
+      requirementFlags: { needsPrivatePool: true },
+    });
+    expect(r.selected).toBeNull();
+  });
+
+  it('beach/river hard signals do not invent a category (no change)', () => {
+    const cover = asset({ id: 'c', propertyId: 'villa-b', category: 'cover' });
+    const r = selectMedia([cover], {
+      imageResponseMode: 'HUMAN_REVIEW_ONLY',
+      propertyMatch: { decision: 'MATCH', propertyId: 'villa-b' },
+      requestedAmenities: [],
+      requirementFlags: { needsBeach: true, needsRiver: true },
+    });
+    expect(r.selected?.id).toBe('c'); // cover fallback, no REQUESTED_REQUIREMENT reason
+    expect(r.reasons.some((x) => x.startsWith('REQUESTED_REQUIREMENT'))).toBe(false);
+  });
+
+  it('deterministic with requirement flags (5 identical runs)', () => {
+    const poolImg = asset({ id: 'p', propertyId: 'villa-b', category: 'pool' });
+    const runs = Array.from({ length: 5 }, () =>
+      JSON.stringify(
+        selectMedia([poolImg], {
+          imageResponseMode: 'HUMAN_REVIEW_ONLY',
+          propertyMatch: { decision: 'MATCH', propertyId: 'villa-b' },
+          requestedAmenities: ['karaoke'],
+          requirementFlags: { needsPrivatePool: true },
+        }),
+      ),
+    );
+    expect(new Set(runs).size).toBe(1);
+  });
+});

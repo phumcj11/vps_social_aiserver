@@ -248,13 +248,24 @@ export function registerMediaRoutes(app: FastifyInstance, deps: MediaDeps): void
 
     const propertyMatch = await store.getPropertyMatchByBusinessMatch(businessMatchId);
     const requirement =
-      (propertyMatch?.reasons?.requirement as { requestedAmenities?: unknown } | undefined) ??
-      undefined;
+      (propertyMatch?.reasons?.requirement as
+        | {
+            requestedAmenities?: unknown;
+            needsPrivatePool?: unknown;
+            needsBeach?: unknown;
+            needsRiver?: unknown;
+          }
+        | undefined) ?? undefined;
     const requestedAmenities = Array.isArray(requirement?.requestedAmenities)
       ? (requirement!.requestedAmenities as unknown[]).filter(
           (x): x is string => typeof x === 'string',
         )
       : [];
+    const requirementFlags = {
+      needsPrivatePool: requirement?.needsPrivatePool === true,
+      needsBeach: requirement?.needsBeach === true,
+      needsRiver: requirement?.needsRiver === true,
+    };
 
     const policies = await bpStore.getBusinessPolicies(id);
     const imageResponseMode = policies?.imageResponseMode ?? DEFAULT_IMAGE_RESPONSE_MODE;
@@ -266,6 +277,7 @@ export function registerMediaRoutes(app: FastifyInstance, deps: MediaDeps): void
         ? { decision: propertyMatch.decision, propertyId: propertyMatch.propertyId }
         : null,
       requestedAmenities,
+      requirementFlags,
     });
     return {
       suggestion: result.selected ? publicMedia(result.selected, id) : null,
