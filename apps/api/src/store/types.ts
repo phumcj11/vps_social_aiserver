@@ -1158,6 +1158,15 @@ export interface Store {
     id: string,
     enabled: boolean,
   ): Promise<BusinessGroupSubscriptionRecord | null>;
+  /** All subscriptions (enabled and disabled) for one Business — for the owner UI. */
+  listSubscriptionsForBusiness(businessId: string): Promise<BusinessGroupSubscriptionRecord[]>;
+  /** The subscription row for a (source group, business) pair, if any. */
+  getBusinessGroupSubscription(
+    sourceGroupId: string,
+    businessId: string,
+  ): Promise<BusinessGroupSubscriptionRecord | null>;
+  /** How many Businesses are actively subscribed to a source Group (operator view). */
+  countEnabledSubscribersForSourceGroup(sourceGroupId: string): Promise<number>;
 
   // Property matches (SPRINT 016B) — one deterministic result per Business Match
   createPropertyMatch(input: CreatePropertyMatchInput): Promise<PropertyMatchRecord>;

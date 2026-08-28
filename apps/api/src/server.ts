@@ -30,6 +30,7 @@ import { registerOpportunityRoutes } from './opportunity/routes';
 import { OpportunityRepository } from './opportunity/repository';
 import { OpportunityCoordinator } from './opportunity/coordinator';
 import { registerMatchingRoutes } from './matching/routes';
+import { registerSourceSubscriptionRoutes } from './routing/routes';
 import { MatchRepository } from './matching/repository';
 import { MatchingCoordinator } from './matching/coordinator';
 import { registerAiDraftRoutes } from './ai/routes';
@@ -296,6 +297,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   registerCollectorRoutes(app, { store, env, collector });
   registerOpportunityRoutes(app, { store, env, opportunities });
   registerMatchingRoutes(app, { store, env, matching });
+  registerSourceSubscriptionRoutes(app, { store, env, facebook });
   registerAiDraftRoutes(app, { store, env, aiDrafts });
   registerReviewRoutes(app, { store, env, reviews });
   registerActionRoutes(app, { store, env, actions });

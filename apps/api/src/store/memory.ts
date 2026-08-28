@@ -1158,6 +1158,35 @@ export class InMemoryStore implements Store {
     return this.cloneSubscription(s);
   }
 
+  async listSubscriptionsForBusiness(
+    businessId: string,
+  ): Promise<BusinessGroupSubscriptionRecord[]> {
+    return [...this.groupSubscriptions.values()]
+      .filter((s) => s.businessId === businessId)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .map((s) => this.cloneSubscription(s));
+  }
+
+  async getBusinessGroupSubscription(
+    sourceGroupId: string,
+    businessId: string,
+  ): Promise<BusinessGroupSubscriptionRecord | null> {
+    for (const s of this.groupSubscriptions.values()) {
+      if (s.sourceGroupId === sourceGroupId && s.businessId === businessId) {
+        return this.cloneSubscription(s);
+      }
+    }
+    return null;
+  }
+
+  async countEnabledSubscribersForSourceGroup(sourceGroupId: string): Promise<number> {
+    let n = 0;
+    for (const s of this.groupSubscriptions.values()) {
+      if (s.sourceGroupId === sourceGroupId && s.enabled) n += 1;
+    }
+    return n;
+  }
+
   // ── Property matches (SPRINT 016B) ─────────────────────────────────────────
 
   private clonePropertyMatch(m: PropertyMatchRecord): PropertyMatchRecord {

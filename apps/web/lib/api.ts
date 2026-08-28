@@ -261,6 +261,36 @@ export interface FacebookStatus {
   cleanupRequired: boolean;
 }
 
+export interface SourceGroupView {
+  id: string;
+  name: string | null;
+  url: string;
+  status: string;
+  accessState: string;
+  subscribed: boolean;
+  subscriberCount: number;
+}
+
+export interface SourceSubscriptionsResponse {
+  sourceConfigured: boolean;
+  groups: SourceGroupView[];
+}
+
+export interface OperatorFacebookSources {
+  sourceConfigured: boolean;
+  readerEnabled: boolean;
+  writeEnabled: boolean;
+  account: {
+    connected: boolean;
+    status: string;
+    connectionState: string;
+    displayName: string | null;
+    lastValidatedAt: string | null;
+    userActionRequired: string | null;
+  } | null;
+  groups: SourceGroupView[];
+}
+
 export interface FacebookGroup {
   id: string;
   facebookGroupId: string | null;
@@ -1139,6 +1169,19 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ reason, confirm: true }),
     }),
+
+  // ── MODEL C — source subscriptions (M4 operator + M5 customer) ─────────────
+  getSourceSubscriptions: (businessId: string) =>
+    request<SourceSubscriptionsResponse>(`/businesses/${businessId}/source-subscriptions`, {
+      method: 'GET',
+    }),
+  setSourceSubscriptions: (businessId: string, groupIds: string[]) =>
+    request<SourceSubscriptionsResponse>(`/businesses/${businessId}/source-subscriptions`, {
+      method: 'PUT',
+      body: JSON.stringify({ groupIds }),
+    }),
+  getOperatorFacebookSources: () =>
+    request<OperatorFacebookSources>('/operator/facebook-sources', { method: 'GET' }),
 };
 
 export interface OperationsModeState {

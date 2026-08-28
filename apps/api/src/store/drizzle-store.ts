@@ -1535,6 +1535,47 @@ export class DrizzleStore implements Store {
     return rows[0] ? this.toSubscription(rows[0]) : null;
   }
 
+  async listSubscriptionsForBusiness(
+    businessId: string,
+  ): Promise<BusinessGroupSubscriptionRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(businessGroupSubscriptions)
+      .where(eq(businessGroupSubscriptions.businessId, businessId))
+      .orderBy(businessGroupSubscriptions.createdAt);
+    return rows.map((r) => this.toSubscription(r));
+  }
+
+  async getBusinessGroupSubscription(
+    sourceGroupId: string,
+    businessId: string,
+  ): Promise<BusinessGroupSubscriptionRecord | null> {
+    const rows = await this.db
+      .select()
+      .from(businessGroupSubscriptions)
+      .where(
+        and(
+          eq(businessGroupSubscriptions.sourceGroupId, sourceGroupId),
+          eq(businessGroupSubscriptions.businessId, businessId),
+        ),
+      )
+      .limit(1);
+    return rows[0] ? this.toSubscription(rows[0]) : null;
+  }
+
+  async countEnabledSubscribersForSourceGroup(sourceGroupId: string): Promise<number> {
+    const rows = await this.db
+      .select({ id: businessGroupSubscriptions.id })
+      .from(businessGroupSubscriptions)
+      .where(
+        and(
+          eq(businessGroupSubscriptions.sourceGroupId, sourceGroupId),
+          eq(businessGroupSubscriptions.enabled, true),
+        ),
+      );
+    return rows.length;
+  }
+
   private toSubscription(
     row: typeof businessGroupSubscriptions.$inferSelect,
   ): BusinessGroupSubscriptionRecord {

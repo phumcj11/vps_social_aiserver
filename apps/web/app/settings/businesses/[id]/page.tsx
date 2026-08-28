@@ -79,6 +79,7 @@ import {
 } from '../business-matching-ui';
 import { MediaManager } from '../MediaManager';
 import { IMAGE_RESPONSE_OPTIONS } from '../media-ui';
+import { SourceSubscriptions } from '../SourceSubscriptions';
 import { OnboardingChecklist } from '../onboarding';
 
 const TABS = [
@@ -88,6 +89,7 @@ const TABS = [
   'ช่องทางติดต่อ',
   'นโยบาย',
   'การจับคู่ลูกค้า',
+  'กลุ่มที่ติดตาม',
   'กลยุทธ์การตอบ Lead',
   'รูปภาพ',
   'ความพร้อมใช้งาน',
@@ -237,6 +239,8 @@ export default function BusinessDetailPage() {
       {tab === 'การจับคู่ลูกค้า' && (
         <MatchingTab businessId={id} profile={profile} properties={properties} onChange={reload} />
       )}
+
+      {tab === 'กลุ่มที่ติดตาม' && <SourceSubscriptions businessId={id} />}
 
       {tab === 'กลยุทธ์การตอบ Lead' && (
         <ResponseStrategyTab

@@ -77,6 +77,13 @@ export const apiEnvSchema = z.object({
   // Collector Engine (SPRINT 006). Reading remains DISABLED by default; the
   // collector launches a (read-only) browser only when this is explicitly on.
   FACEBOOK_READER_ENABLED: booleanish(false),
+  // MODEL C — the SYSTEM/source tenant workspace that owns the KMKT scanner
+  // account + source Facebook Groups. Empty (default) means no source tenant is
+  // configured yet: operator "Facebook Sources" and customer "กลุ่มที่ติดตาม"
+  // safely show their empty states, and no group is subscribable. It is set only
+  // once the source tenant is established (M6). Never a secret — just a
+  // workspace id used to scope source-group listing.
+  MODEL_C_SOURCE_WORKSPACE_ID: z.string().default(''),
   COLLECTOR_MAX_SCROLLS: intFromString(5),
   COLLECTOR_MAX_POSTS_PER_GROUP: intFromString(30),
   COLLECTOR_TIMEOUT_MS: intFromString(120_000), // 2 minutes per run

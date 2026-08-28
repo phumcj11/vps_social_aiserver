@@ -6,6 +6,7 @@ export const RoutingErrorCode = {
   OPPORTUNITY_NOT_FOUND: 'OPPORTUNITY_NOT_FOUND',
   NOT_SOURCE_OPPORTUNITY: 'NOT_SOURCE_OPPORTUNITY',
   SIGNAL_NOT_FOUND: 'SIGNAL_NOT_FOUND',
+  NOT_SOURCE_GROUP: 'NOT_SOURCE_GROUP',
 } as const;
 
 export type RoutingErrorCodeType = (typeof RoutingErrorCode)[keyof typeof RoutingErrorCode];
