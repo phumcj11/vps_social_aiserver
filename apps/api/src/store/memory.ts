@@ -49,6 +49,8 @@ import type {
   OpportunityStatistics,
   BusinessMatchRecord,
   CreateBusinessMatchInput,
+  BusinessGroupSubscriptionRecord,
+  CreateBusinessGroupSubscriptionInput,
   BusinessMatchFilter,
   PropertyMatchRecord,
   CreatePropertyMatchInput,
@@ -907,6 +909,15 @@ export class InMemoryStore implements Store {
     for (const o of this.opportunities.values()) {
       if (o.signalId === input.signalId) throw new Error('duplicate opportunity for signal');
     }
+    const sourceOpportunityId = input.sourceOpportunityId ?? null;
+    // Idempotency: at most one projection of a source Opportunity per workspace.
+    if (sourceOpportunityId !== null) {
+      for (const o of this.opportunities.values()) {
+        if (o.sourceOpportunityId === sourceOpportunityId && o.workspaceId === input.workspaceId) {
+          throw new Error('duplicate projection for source opportunity and workspace');
+        }
+      }
+    }
     const now = this.now();
     const record: OpportunityRecord = {
       id: input.id,
@@ -915,6 +926,7 @@ export class InMemoryStore implements Store {
       decision: input.decision,
       status: input.status,
       classifierVersion: input.classifierVersion,
+      sourceOpportunityId,
       createdAt: now,
       updatedAt: now,
     };
@@ -925,6 +937,18 @@ export class InMemoryStore implements Store {
   async getOpportunityById(id: string): Promise<OpportunityRecord | null> {
     const o = this.opportunities.get(id);
     return o ? { ...o } : null;
+  }
+
+  async getProjectedOpportunity(
+    sourceOpportunityId: string,
+    workspaceId: string,
+  ): Promise<OpportunityRecord | null> {
+    for (const o of this.opportunities.values()) {
+      if (o.sourceOpportunityId === sourceOpportunityId && o.workspaceId === workspaceId) {
+        return { ...o };
+      }
+    }
+    return null;
   }
 
   async getOpportunityBySignal(signalId: string): Promise<OpportunityRecord | null> {
@@ -1074,6 +1098,64 @@ export class InMemoryStore implements Store {
       .sort((a, b) => b.matchedAt.getTime() - a.matchedAt.getTime())
       .slice(0, filter.limit ?? 500)
       .map((m) => this.cloneMatch(m));
+  }
+
+  // ── Central Scanner subscriptions (MODEL C) ────────────────────────────────
+
+  private groupSubscriptions = new Map<string, BusinessGroupSubscriptionRecord>(); // keyed by id
+
+  private cloneSubscription(s: BusinessGroupSubscriptionRecord): BusinessGroupSubscriptionRecord {
+    return { ...s };
+  }
+
+  async createBusinessGroupSubscription(
+    input: CreateBusinessGroupSubscriptionInput,
+  ): Promise<BusinessGroupSubscriptionRecord> {
+    for (const s of this.groupSubscriptions.values()) {
+      if (s.sourceGroupId === input.sourceGroupId && s.businessId === input.businessId) {
+        throw new Error('duplicate subscription for source group and business');
+      }
+    }
+    const record: BusinessGroupSubscriptionRecord = {
+      id: input.id,
+      sourceGroupId: input.sourceGroupId,
+      businessId: input.businessId,
+      enabled: input.enabled ?? true,
+      createdAt: this.now(),
+      updatedAt: this.now(),
+    };
+    this.groupSubscriptions.set(record.id, record);
+    return this.cloneSubscription(record);
+  }
+
+  async businessGroupSubscriptionExists(
+    sourceGroupId: string,
+    businessId: string,
+  ): Promise<boolean> {
+    for (const s of this.groupSubscriptions.values()) {
+      if (s.sourceGroupId === sourceGroupId && s.businessId === businessId) return true;
+    }
+    return false;
+  }
+
+  async listEnabledSubscriptionsForSourceGroup(
+    sourceGroupId: string,
+  ): Promise<BusinessGroupSubscriptionRecord[]> {
+    return [...this.groupSubscriptions.values()]
+      .filter((s) => s.sourceGroupId === sourceGroupId && s.enabled)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .map((s) => this.cloneSubscription(s));
+  }
+
+  async setBusinessGroupSubscriptionEnabled(
+    id: string,
+    enabled: boolean,
+  ): Promise<BusinessGroupSubscriptionRecord | null> {
+    const s = this.groupSubscriptions.get(id);
+    if (!s) return null;
+    s.enabled = enabled;
+    s.updatedAt = this.now();
+    return this.cloneSubscription(s);
   }
 
   // ── Property matches (SPRINT 016B) ─────────────────────────────────────────

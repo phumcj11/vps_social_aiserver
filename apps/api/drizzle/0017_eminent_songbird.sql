@@ -1,0 +1,2 @@
+ALTER TABLE `opportunities` ADD `source_opportunity_id` varchar(36);--> statement-breakpoint
+ALTER TABLE `opportunities` ADD CONSTRAINT `opportunities_source_projection_unique` UNIQUE(`source_opportunity_id`,`workspace_id`);

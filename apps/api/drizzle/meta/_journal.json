@@ -113,6 +113,20 @@
       "when": 1787390068581,
       "tag": "0015_violet_inertia",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "5",
+      "when": 1787938878637,
+      "tag": "0016_modern_vindicator",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1787940324232,
+      "tag": "0017_eminent_songbird",
+      "breakpoints": true
     }
   ]
 }

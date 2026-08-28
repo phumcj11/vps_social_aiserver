@@ -404,6 +404,8 @@ export interface OpportunityRecord {
   decision: OpportunityDecision;
   status: OpportunityStatus;
   classifierVersion: string;
+  /** MODEL C — null for native; the source Opportunity id for a projection. */
+  sourceOpportunityId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -415,6 +417,8 @@ export interface CreateOpportunityInput {
   decision: OpportunityDecision;
   status: OpportunityStatus;
   classifierVersion: string;
+  /** MODEL C — set only when creating a customer-workspace projection. */
+  sourceOpportunityId?: string | null;
 }
 
 export interface OpportunityEventRecord {
@@ -479,6 +483,25 @@ export interface BusinessMatchFilter {
   businessId?: string;
   decision?: MatchDecision;
   limit?: number;
+}
+
+// ── MODEL C: Central Scanner cross-workspace routing (M1/M2) ─────────────────
+
+/** A customer Business's subscription to a system-owned source Facebook Group. */
+export interface BusinessGroupSubscriptionRecord {
+  id: string;
+  sourceGroupId: string;
+  businessId: string;
+  enabled: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateBusinessGroupSubscriptionInput {
+  id: string;
+  sourceGroupId: string;
+  businessId: string;
+  enabled?: boolean;
 }
 
 // ── Property Match (SPRINT 016B) ─────────────────────────────────────────────
@@ -1090,6 +1113,11 @@ export interface Store {
   // Opportunities
   createOpportunity(input: CreateOpportunityInput): Promise<OpportunityRecord>;
   getOpportunityById(id: string): Promise<OpportunityRecord | null>;
+  /** MODEL C — the existing projection of a source Opportunity into a workspace, if any. */
+  getProjectedOpportunity(
+    sourceOpportunityId: string,
+    workspaceId: string,
+  ): Promise<OpportunityRecord | null>;
   getOpportunityBySignal(signalId: string): Promise<OpportunityRecord | null>;
   listOpportunitiesByWorkspace(
     workspaceId: string,
@@ -1117,6 +1145,19 @@ export interface Store {
     workspaceId: string,
     filter?: BusinessMatchFilter,
   ): Promise<BusinessMatchRecord[]>;
+
+  // Central Scanner subscriptions (MODEL C) — one per (source group, business)
+  createBusinessGroupSubscription(
+    input: CreateBusinessGroupSubscriptionInput,
+  ): Promise<BusinessGroupSubscriptionRecord>;
+  businessGroupSubscriptionExists(sourceGroupId: string, businessId: string): Promise<boolean>;
+  listEnabledSubscriptionsForSourceGroup(
+    sourceGroupId: string,
+  ): Promise<BusinessGroupSubscriptionRecord[]>;
+  setBusinessGroupSubscriptionEnabled(
+    id: string,
+    enabled: boolean,
+  ): Promise<BusinessGroupSubscriptionRecord | null>;
 
   // Property matches (SPRINT 016B) — one deterministic result per Business Match
   createPropertyMatch(input: CreatePropertyMatchInput): Promise<PropertyMatchRecord>;

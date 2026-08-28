@@ -393,6 +393,51 @@ export type FacebookGroupRow = typeof facebookGroups.$inferSelect;
 export type BusinessFacebookGroupRow = typeof businessFacebookGroups.$inferSelect;
 
 /**
+ * ── MODEL C: Central Scanner cross-workspace routing (M1) ────────────────────
+ *
+ * A customer Business (in its own workspace) SUBSCRIBES to a SYSTEM-owned source
+ * Facebook Group. The KMKT scanner reads each shared Group once; a qualifying
+ * post's central Opportunity then fans out to every subscribed Business, each
+ * receiving its own Business Match in ITS OWN workspace (routing/coordinator.ts).
+ *
+ * This is deliberately separate from `business_facebook_groups` (a customer's
+ * OWN group in its OWN workspace) to avoid cross-workspace ownership ambiguity:
+ * here `source_group_id` is owned by the source tenant, `business_id` by the
+ * customer tenant. The Business already owns its workspace (`businesses.
+ * workspace_id`), so no redundant `business_workspace_id` is stored. The scanner
+ * account/session/profile NEVER appears here — only these two ids.
+ */
+export const businessGroupSubscriptions = mysqlTable(
+  'business_group_subscriptions',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    // The SYSTEM/source-tenant Facebook Group being subscribed to.
+    sourceGroupId: varchar('source_group_id', { length: 36 })
+      .notNull()
+      .references(() => facebookGroups.id),
+    // The customer Business (owns its own workspace via businesses.workspace_id).
+    businessId: varchar('business_id', { length: 36 })
+      .notNull()
+      .references(() => businesses.id),
+    enabled: boolean('enabled').notNull().default(true),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow().onUpdateNow(),
+  },
+  (table) => ({
+    // A Business subscribes to a given source Group at most once (routing
+    // idempotency at the subscription layer).
+    sourceGroupBusinessUnique: uniqueIndex('business_group_subscriptions_unique').on(
+      table.sourceGroupId,
+      table.businessId,
+    ),
+    sourceGroupIdx: index('business_group_subscriptions_source_group_idx').on(table.sourceGroupId),
+    businessIdx: index('business_group_subscriptions_business_idx').on(table.businessId),
+  }),
+);
+
+export type BusinessGroupSubscriptionRow = typeof businessGroupSubscriptions.$inferSelect;
+
+/**
  * ── SPRINT 006: Collector Engine (read-only) ─────────────────────────────────
  *
  * The Collector reads posts from Facebook Groups and stores them as SIGNALS.
@@ -544,6 +589,13 @@ export const opportunities = mysqlTable(
     // NEW | READY | ARCHIVED (lifecycle).
     status: varchar('status', { length: 20 }).notNull().default('NEW'),
     classifierVersion: varchar('classifier_version', { length: 40 }).notNull(),
+    // MODEL C (M2b) — customer-safe projection linkage. NULL = a native
+    // Opportunity (classified in this workspace). Non-NULL = an immutable
+    // customer-workspace PROJECTION of a central source Opportunity (this value
+    // is the source Opportunity's id, kept for server/operator audit only). It
+    // is a plain audit pointer, not a hard cross-tenant FK, so a customer
+    // projection never depends on reading the source tenant at request time.
+    sourceOpportunityId: varchar('source_opportunity_id', { length: 36 }),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow().onUpdateNow(),
   },
@@ -551,6 +603,13 @@ export const opportunities = mysqlTable(
     signalUnique: uniqueIndex('opportunities_signal_unique').on(table.signalId),
     workspaceIdx: index('opportunities_workspace_idx').on(table.workspaceId),
     statusIdx: index('opportunities_status_idx').on(table.workspaceId, table.status),
+    // At most one projection of a given source Opportunity per customer
+    // workspace (idempotent routing). MySQL treats NULLs as distinct, so native
+    // Opportunities (source_opportunity_id NULL) are never constrained here.
+    sourceProjectionUnique: uniqueIndex('opportunities_source_projection_unique').on(
+      table.sourceOpportunityId,
+      table.workspaceId,
+    ),
   }),
 );
 

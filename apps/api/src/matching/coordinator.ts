@@ -161,6 +161,50 @@ export class MatchingCoordinator {
   }
 
   /**
+   * MODEL C — run the Property stage for a SINGLE existing Business Match,
+   * regardless of which workspace produced its Opportunity. Used by cross-
+   * workspace routing: a routed Match lives in the customer workspace but its
+   * Opportunity lives in the source tenant, so the Opportunity-driven
+   * `runMatching(workspaceId)` never reaches it. This reuses the exact private
+   * stage below (same selection, same idempotency) and enforces that the Match
+   * belongs to `workspaceId` — it never relaxes a tenant guard. Idempotent.
+   */
+  async runPropertyStageForMatch(
+    workspaceId: string,
+    businessMatchId: string,
+  ): Promise<PropertyMatchRecord | null> {
+    this.assertWorkspace(workspaceId);
+    const match = await this.deps.repo.getMatchById(businessMatchId);
+    if (!match || match.workspaceId !== workspaceId) {
+      throw new MatchingError(MatchingErrorCode.MATCH_NOT_FOUND, 'Business match not found');
+    }
+    // Only a MATCH has a Property stage; a NO_MATCH business never selects one.
+    if (match.decision !== 'MATCH') return null;
+    const opportunity = await this.deps.repo.getOpportunityById(match.opportunityId);
+    const signal = opportunity ? await this.deps.repo.getSignalById(opportunity.signalId) : null;
+    const throwaway: MatchRunSummary = {
+      processedOpportunities: 0,
+      candidates: 0,
+      matches: 0,
+      noMatches: 0,
+      skipped: 0,
+      propertyCandidates: 0,
+      propertyMatches: 0,
+      propertyNoMatches: 0,
+      propertySkipped: 0,
+    };
+    await this.runPropertyStage(
+      workspaceId,
+      match.opportunityId,
+      match.businessId,
+      match.id,
+      signal?.message ?? null,
+      throwaway,
+    );
+    return this.deps.repo.getPropertyMatchByBusinessMatch(businessMatchId);
+  }
+
+  /**
    * Property stage (SPRINT 016B): after a Business MATCH, evaluate the Business's
    * own active Properties and persist ONE deterministic result — the selected
    * Property (MATCH) or a single NO_PROPERTY_MATCH row. Idempotent per Business

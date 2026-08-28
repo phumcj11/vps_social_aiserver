@@ -12,6 +12,7 @@ import {
   auditEvents,
   facebookGroups,
   businessFacebookGroups,
+  businessGroupSubscriptions,
   facebookRawSignals,
   facebookSignals,
   collectorCheckpoints,
@@ -81,6 +82,8 @@ import type {
   CreateOpportunityEventInput,
   OpportunityStatistics,
   BusinessMatchRecord,
+  BusinessGroupSubscriptionRecord,
+  CreateBusinessGroupSubscriptionInput,
   MatchDecision,
   MatchReason,
   CreateBusinessMatchInput,
@@ -1216,10 +1219,28 @@ export class DrizzleStore implements Store {
       decision: input.decision,
       status: input.status,
       classifierVersion: input.classifierVersion,
+      sourceOpportunityId: input.sourceOpportunityId ?? null,
     });
     const created = await this.getOpportunityById(input.id);
     if (!created) throw new Error('opportunity creation failed');
     return created;
+  }
+
+  async getProjectedOpportunity(
+    sourceOpportunityId: string,
+    workspaceId: string,
+  ): Promise<OpportunityRecord | null> {
+    const rows = await this.db
+      .select()
+      .from(opportunities)
+      .where(
+        and(
+          eq(opportunities.sourceOpportunityId, sourceOpportunityId),
+          eq(opportunities.workspaceId, workspaceId),
+        ),
+      )
+      .limit(1);
+    return rows[0] ? this.toOpportunity(rows[0]) : null;
   }
 
   async getOpportunityById(id: string): Promise<OpportunityRecord | null> {
@@ -1363,6 +1384,7 @@ export class DrizzleStore implements Store {
       decision: row.decision as OpportunityDecision,
       status: row.status as OpportunityStatus,
       classifierVersion: row.classifierVersion,
+      sourceOpportunityId: row.sourceOpportunityId ?? null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
@@ -1442,6 +1464,88 @@ export class DrizzleStore implements Store {
       .orderBy(desc(businessMatches.matchedAt))
       .limit(filter.limit ?? 500);
     return rows.map((r) => this.toBusinessMatch(r));
+  }
+
+  // ── Central Scanner subscriptions (MODEL C) ────────────────────────────────
+
+  async createBusinessGroupSubscription(
+    input: CreateBusinessGroupSubscriptionInput,
+  ): Promise<BusinessGroupSubscriptionRecord> {
+    await this.db.insert(businessGroupSubscriptions).values({
+      id: input.id,
+      sourceGroupId: input.sourceGroupId,
+      businessId: input.businessId,
+      enabled: input.enabled ?? true,
+    });
+    const rows = await this.db
+      .select()
+      .from(businessGroupSubscriptions)
+      .where(eq(businessGroupSubscriptions.id, input.id))
+      .limit(1);
+    if (!rows[0]) throw new Error('subscription creation failed');
+    return this.toSubscription(rows[0]);
+  }
+
+  async businessGroupSubscriptionExists(
+    sourceGroupId: string,
+    businessId: string,
+  ): Promise<boolean> {
+    const rows = await this.db
+      .select({ id: businessGroupSubscriptions.id })
+      .from(businessGroupSubscriptions)
+      .where(
+        and(
+          eq(businessGroupSubscriptions.sourceGroupId, sourceGroupId),
+          eq(businessGroupSubscriptions.businessId, businessId),
+        ),
+      )
+      .limit(1);
+    return rows.length > 0;
+  }
+
+  async listEnabledSubscriptionsForSourceGroup(
+    sourceGroupId: string,
+  ): Promise<BusinessGroupSubscriptionRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(businessGroupSubscriptions)
+      .where(
+        and(
+          eq(businessGroupSubscriptions.sourceGroupId, sourceGroupId),
+          eq(businessGroupSubscriptions.enabled, true),
+        ),
+      )
+      .orderBy(businessGroupSubscriptions.createdAt);
+    return rows.map((r) => this.toSubscription(r));
+  }
+
+  async setBusinessGroupSubscriptionEnabled(
+    id: string,
+    enabled: boolean,
+  ): Promise<BusinessGroupSubscriptionRecord | null> {
+    await this.db
+      .update(businessGroupSubscriptions)
+      .set({ enabled })
+      .where(eq(businessGroupSubscriptions.id, id));
+    const rows = await this.db
+      .select()
+      .from(businessGroupSubscriptions)
+      .where(eq(businessGroupSubscriptions.id, id))
+      .limit(1);
+    return rows[0] ? this.toSubscription(rows[0]) : null;
+  }
+
+  private toSubscription(
+    row: typeof businessGroupSubscriptions.$inferSelect,
+  ): BusinessGroupSubscriptionRecord {
+    return {
+      id: row.id,
+      sourceGroupId: row.sourceGroupId,
+      businessId: row.businessId,
+      enabled: !!row.enabled,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
   }
 
   private toBusinessMatch(row: typeof businessMatches.$inferSelect): BusinessMatchRecord {
