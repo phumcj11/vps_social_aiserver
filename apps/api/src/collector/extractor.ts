@@ -49,6 +49,22 @@ function extractMessage(fragment: string): string | null {
     const text = stripTags(marked[1]);
     if (text.length > 0) return text;
   }
+  // Text-on-background ("styled status") posts: the body lives neither in a
+  // preview marker nor a `dir="auto"` block but inside a div whose INLINE STYLE
+  // carries Facebook's background-text rendering (an explicit `font-size:` plus
+  // a `text-align:`). This is a STRUCTURAL signal (the inline style), not an
+  // obfuscated class name, and is scoped to the post fragment — so ordinary
+  // chrome (cover updates, comment prompts, timestamps, buttons) is never a
+  // styled text block and is not captured. This is the real DOM variant that
+  // made genuine "หา…" seeking leads extract as NULL in the M7 pilot.
+  const styled =
+    /<div[^>]*\bstyle="[^"]*font-size:[^"]*text-align:[^"]*"[^>]*>([\s\S]*?)<\/div>/i.exec(
+      fragment,
+    );
+  if (styled && styled[1]) {
+    const text = stripTags(styled[1]);
+    if (text.length > 0) return text;
+  }
   // Fallback: the first auto-direction text block.
   const auto = /<div[^>]*\bdir="auto"[^>]*>([\s\S]*?)<\/div>/i.exec(fragment);
   if (auto && auto[1]) {
