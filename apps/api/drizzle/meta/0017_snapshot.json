@@ -1,8 +1,8 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "54189243-450a-4bb5-8f26-3fe226a012a5",
-  "prevId": "c33d7236-2b66-4793-a26d-22ac220f00a3",
+  "id": "0ce9e851-a316-4645-baa9-0c5ea5094656",
+  "prevId": "c8db61e8-b431-41b0-97c6-046fe3c972e9",
   "tables": {
     "action_events": {
       "name": "action_events",
@@ -1602,8 +1602,8 @@
         }
       },
       "foreignKeys": {
-        "business_group_subscriptions_source_group_id_facebook_groups_id_fk": {
-          "name": "business_group_subscriptions_source_group_id_facebook_groups_id_fk",
+        "bgs_source_group_fk": {
+          "name": "bgs_source_group_fk",
           "tableFrom": "business_group_subscriptions",
           "tableTo": "facebook_groups",
           "columnsFrom": ["source_group_id"],
@@ -1611,8 +1611,8 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "business_group_subscriptions_business_id_businesses_id_fk": {
-          "name": "business_group_subscriptions_business_id_businesses_id_fk",
+        "bgs_business_fk": {
+          "name": "bgs_business_fk",
           "tableFrom": "business_group_subscriptions",
           "tableTo": "businesses",
           "columnsFrom": ["business_id"],

@@ -9,7 +9,7 @@ CREATE TABLE `business_group_subscriptions` (
 	CONSTRAINT `business_group_subscriptions_unique` UNIQUE(`source_group_id`,`business_id`)
 );
 --> statement-breakpoint
-ALTER TABLE `business_group_subscriptions` ADD CONSTRAINT `business_group_subscriptions_source_group_id_facebook_groups_id_fk` FOREIGN KEY (`source_group_id`) REFERENCES `facebook_groups`(`id`) ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE `business_group_subscriptions` ADD CONSTRAINT `business_group_subscriptions_business_id_businesses_id_fk` FOREIGN KEY (`business_id`) REFERENCES `businesses`(`id`) ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE `business_group_subscriptions` ADD CONSTRAINT `bgs_source_group_fk` FOREIGN KEY (`source_group_id`) REFERENCES `facebook_groups`(`id`) ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE `business_group_subscriptions` ADD CONSTRAINT `bgs_business_fk` FOREIGN KEY (`business_id`) REFERENCES `businesses`(`id`) ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX `business_group_subscriptions_source_group_idx` ON `business_group_subscriptions` (`source_group_id`);--> statement-breakpoint
 CREATE INDEX `business_group_subscriptions_business_idx` ON `business_group_subscriptions` (`business_id`);

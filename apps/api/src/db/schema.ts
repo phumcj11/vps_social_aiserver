@@ -412,13 +412,9 @@ export const businessGroupSubscriptions = mysqlTable(
   {
     id: varchar('id', { length: 36 }).primaryKey(),
     // The SYSTEM/source-tenant Facebook Group being subscribed to.
-    sourceGroupId: varchar('source_group_id', { length: 36 })
-      .notNull()
-      .references(() => facebookGroups.id),
+    sourceGroupId: varchar('source_group_id', { length: 36 }).notNull(),
     // The customer Business (owns its own workspace via businesses.workspace_id).
-    businessId: varchar('business_id', { length: 36 })
-      .notNull()
-      .references(() => businesses.id),
+    businessId: varchar('business_id', { length: 36 }).notNull(),
     enabled: boolean('enabled').notNull().default(true),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow().onUpdateNow(),
@@ -432,6 +428,21 @@ export const businessGroupSubscriptions = mysqlTable(
     ),
     sourceGroupIdx: index('business_group_subscriptions_source_group_idx').on(table.sourceGroupId),
     businessIdx: index('business_group_subscriptions_business_idx').on(table.businessId),
+    // EXPLICIT short FK names — MySQL's identifier limit is 64 chars, and
+    // drizzle's auto-generated names (…_source_group_id_facebook_groups_id_fk =
+    // 66) exceeded it, so a real-MySQL apply of 0016 failed with ERROR 1059.
+    // These names are stable, deterministic, and verified by the real-MySQL
+    // migration test.
+    sourceGroupFk: foreignKey({
+      columns: [table.sourceGroupId],
+      foreignColumns: [facebookGroups.id],
+      name: 'bgs_source_group_fk',
+    }),
+    businessFk: foreignKey({
+      columns: [table.businessId],
+      foreignColumns: [businesses.id],
+      name: 'bgs_business_fk',
+    }),
   }),
 );
 
