@@ -230,6 +230,17 @@ export function checkDraft(
     });
   }
 
+  // v2 (M9E): a NEEDS_CONFIRMATION recommendation names a Property with a required
+  // fact the owner has not confirmed — a human must verify the reply does not
+  // assert that unconfirmed fact before it goes anywhere.
+  if (context.propertyNeedsConfirmation && trimmed.length > 0) {
+    reasons.push({
+      code: 'PROPERTY_NEEDS_CONFIRMATION',
+      detail: 'Recommended property has an unconfirmed required fact — verify before sending',
+      severity: 'NEEDS_REVIEW',
+    });
+  }
+
   let decision: DraftPolicyDecision = 'PASS';
   if (reasons.some((r) => r.severity === 'BLOCK')) decision = 'BLOCK';
   else if (reasons.some((r) => r.severity === 'NEEDS_REVIEW')) decision = 'NEEDS_REVIEW';

@@ -33,6 +33,9 @@ export interface ContextBuilderInput {
   contacts?: ContactChannel[];
   /** True when the Business MATCH produced NO Property MATCH. */
   noPropertyMatch?: boolean;
+  /** v2 (M9E) — recommended property is NEEDS_CONFIRMATION + its unconfirmed facts. */
+  propertyNeedsConfirmation?: boolean;
+  unconfirmedRequirements?: string[];
 }
 
 export interface ContextBuilderConfig {
@@ -188,5 +191,7 @@ export function buildDraftContext(
     approvedContacts,
     mustNotClaim,
     noPropertyMatch: input.noPropertyMatch ?? false,
+    propertyNeedsConfirmation: input.propertyNeedsConfirmation ?? false,
+    unconfirmedRequirements: input.unconfirmedRequirements ?? [],
   };
 }

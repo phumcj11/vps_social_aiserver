@@ -282,19 +282,31 @@ export class AiDraftCoordinator {
         this.deps.repo.listContactsByBusiness(business.id),
       ]);
 
-    // SPRINT 016B — resolve the selected Property from the persisted Property match.
-    // v2 (M9C): ONLY a fully confirmed MATCH feeds a Property into the draft. A
-    // NEEDS_CONFIRMATION candidate has an unconfirmed required fact, so the draft
-    // stays business-level and safe (no property-specific/near-beach claims) —
-    // the candidate is still surfaced to the reviewer via the Property-match
-    // record. Property-specific draft wording for NEEDS_CONFIRMATION is M9E.
+    // SPRINT 016B / v2 (M9E) — resolve the recommended Property from the persisted
+    // Property match. A MATCH and a NEEDS_CONFIRMATION both feed the recommended
+    // Property into the draft; the difference is that NEEDS_CONFIRMATION also
+    // carries the list of REQUIRED facts still awaiting confirmation, which the
+    // draft phrases as "needs verification" (never as satisfied). A NO_MATCH (or
+    // no property stage) keeps the draft strictly business-level.
+    const recommendable =
+      propertyMatch?.decision === 'MATCH' || propertyMatch?.decision === 'NEEDS_CONFIRMATION';
     let selectedProperty = null;
-    if (propertyMatch?.decision === 'MATCH' && propertyMatch.propertyId) {
+    if (recommendable && propertyMatch?.propertyId) {
       selectedProperty = await this.deps.repo.getPropertyById(propertyMatch.propertyId);
     }
-    // Any evaluated Property stage that did not yield a confirmed MATCH → keep
-    // the draft business-level (covers NO_MATCH and NEEDS_CONFIRMATION).
-    const noPropertyMatch = propertyMatch != null && propertyMatch.decision !== 'MATCH';
+    // NO_PROPERTY_MATCH only when the Property stage explicitly returned NO_MATCH
+    // (unchanged from v1). A null Property stage (no property concept) is NOT a
+    // no-property-match; a NEEDS_CONFIRMATION uses its recommended Property.
+    const noPropertyMatch = propertyMatch?.decision === 'NO_MATCH';
+    const propertyNeedsConfirmation =
+      propertyMatch?.decision === 'NEEDS_CONFIRMATION' && selectedProperty != null;
+    // The required facts still to confirm — the matcher's `*_UNKNOWN` codes on the
+    // recommended result (present only for NEEDS_CONFIRMATION).
+    const unconfirmedRequirements = propertyNeedsConfirmation
+      ? (propertyMatch?.reasons.reasons ?? []).filter((r) =>
+          (r.split(':')[0] ?? '').trim().endsWith('_UNKNOWN'),
+        )
+      : [];
 
     const creation = oppEvents.find(
       (e) => e.event === 'OpportunityCreated' || e.event === 'OpportunityRejected',
@@ -326,6 +338,8 @@ export class AiDraftCoordinator {
         businessPolicies,
         contacts,
         noPropertyMatch,
+        propertyNeedsConfirmation,
+        unconfirmedRequirements,
       },
       {
         maxKnowledgeItems: this.deps.env.AI_CONTEXT_MAX_KNOWLEDGE_ITEMS,

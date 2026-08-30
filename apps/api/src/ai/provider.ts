@@ -37,6 +37,18 @@ export class MockAiDraftProvider implements AiDraftProvider {
     if (p) {
       usedFields.push('property.name');
       let intro = `จากข้อมูลที่แจ้งมา ${p.name} ของ ${b.name}`;
+      // Describe the ACTUAL stored property type (v2/M9E): a บ้านพัก request may be
+      // served by a pool_villa — state the real type, never re-label it.
+      const descBits: string[] = [];
+      if (p.propertyType) {
+        descBits.push(`เป็น${thaiPropertyType(p.propertyType)}`);
+        usedFields.push('property.propertyType');
+      }
+      if (p.area) {
+        descBits.push(`ในพื้นที่${p.area}`);
+        usedFields.push('property.area');
+      }
+      if (descBits.length > 0) intro += ` ${descBits.join('')}`;
       if (p.maxGuests != null) {
         intro += ` รองรับได้สูงสุด ${p.maxGuests} ท่าน`;
         usedFields.push('property.maxGuests');
@@ -54,6 +66,15 @@ export class MockAiDraftProvider implements AiDraftProvider {
           sentences.push(`ราคาเริ่มต้น ${num[1]} บาท`);
           usedFields.push('property.priceFact');
         }
+      }
+      // v2 (M9E): for a NEEDS_CONFIRMATION recommendation, add ONE grouped
+      // verification sentence for the required facts the owner has not confirmed.
+      // The confirmed facts above are stated normally; the unconfirmed ones are
+      // asked about — never asserted.
+      const unconfirmed = context.unconfirmedRequirements ?? [];
+      if (context.propertyNeedsConfirmation && unconfirmed.length > 0) {
+        sentences.push(verificationSentence(unconfirmed));
+        usedFields.push('unconfirmedRequirements');
       }
     } else {
       // Business-level only — no property/price/availability claim.
@@ -110,6 +131,51 @@ function thaiAmenity(label: string): string {
     kitchen: 'ครัว',
   };
   return map[label] ?? label;
+}
+
+/** Map a stored accommodation type to a natural Thai description (M9E). */
+function thaiPropertyType(type: string): string {
+  const map: Record<string, string> = {
+    pool_villa: 'พูลวิลล่า',
+    villa: 'วิลล่า',
+    house: 'บ้านพัก',
+    resort: 'รีสอร์ท',
+    hotel_room: 'ห้องพักโรงแรม',
+    hotel: 'โรงแรม',
+    homestay: 'โฮมสเตย์',
+    condo: 'คอนโด',
+    apartment: 'อพาร์ตเมนต์',
+  };
+  return map[type] ?? type;
+}
+
+/** Noun phrase (customer-facing) for a required fact still awaiting confirmation. */
+function unknownFactNoun(code: string): string | null {
+  const base = (code.split(':')[0] ?? '').trim();
+  const map: Record<string, string> = {
+    BEACH_UNKNOWN: 'ระยะห่างจากทะเล',
+    PRIVATE_POOL_UNKNOWN: 'สระส่วนตัว',
+    CAPACITY_UNKNOWN: 'จำนวนผู้เข้าพักที่รองรับ',
+    AREA_UNKNOWN: 'พื้นที่ตั้งของที่พัก',
+    BEDROOMS_UNKNOWN: 'จำนวนห้องนอน',
+    RIVER_UNKNOWN: 'ระยะห่างจากแม่น้ำ',
+  };
+  return map[base] ?? null;
+}
+
+/**
+ * ONE deterministic, natural Thai sentence asking to verify the unconfirmed
+ * facts — grouped (never one repetitive sentence per fact). Uses no technical
+ * terms (UNKNOWN / NEEDS_CONFIRMATION / codes) in the customer-facing text.
+ */
+function verificationSentence(codes: string[]): string {
+  const nouns = Array.from(
+    new Set(codes.map(unknownFactNoun).filter((n): n is string => n !== null)),
+  );
+  if (nouns.length === 0) {
+    return 'ส่วนรายละเอียดบางอย่าง ขอทางเราตรวจสอบเพิ่มเติมให้อีกครั้งนะคะ';
+  }
+  return `ส่วนเรื่อง${nouns.join('และ')} ขอทางเราตรวจสอบรายละเอียดเพิ่มเติมให้อีกครั้งนะคะ`;
 }
 
 /** Map a contact channel type to a short Thai label for the mock draft. */

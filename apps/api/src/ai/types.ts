@@ -67,6 +67,15 @@ export interface DraftContext {
   mustNotClaim: string[];
   /** True when a Business MATCH produced NO Property MATCH (review should flag it). */
   noPropertyMatch: boolean;
+  /**
+   * v2 (M9E) — the recommended Property is a NEEDS_CONFIRMATION result: its
+   * confirmed facts MAY be stated, but `unconfirmedRequirements` lists the
+   * REQUIRED facts the owner has not confirmed (matcher `*_UNKNOWN` codes). The
+   * draft must phrase those as "needs verification", never as satisfied. Absent
+   * on MATCH (all confirmed) and NO_MATCH (business-level only).
+   */
+  propertyNeedsConfirmation?: boolean;
+  unconfirmedRequirements?: string[];
 }
 
 /** A single layer of the layered prompt (system → context → task). */
