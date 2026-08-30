@@ -24,7 +24,6 @@ import {
   REVIEW_SAVE_ERROR,
   REVIEW_APPROVE_LABEL,
   REVIEW_REJECT_LABEL,
-  REVIEW_DECISION_REMINDER,
   TEST_DATA_BADGE,
   reviewStatusThai,
   reviewEventThai,
@@ -40,6 +39,15 @@ import {
   requirementLinesThai,
   candidateReasonThai,
   closestCandidateName,
+  propertyStateLabelThai,
+  NEEDS_CONFIRMATION_SUMMARY,
+  NEEDS_CONFIRMATION_PROPERTY_NOTE,
+  NEEDS_CONFIRMATION_RECOMMEND_BADGE,
+  DRAFT_NEEDS_CONFIRMATION_NOTE,
+  REVIEW_APPROVE_SEMANTIC_NOTE,
+  needsConfirmationSummaryLines,
+  ownerGuidanceThai,
+  type CandidateReasonLine,
 } from '../review-ui';
 
 interface DraftView {
@@ -93,6 +101,37 @@ function Card({
     <div style={{ border: `1px solid ${bd}`, background: bg, borderRadius: 8, padding: '0.75rem' }}>
       {children}
     </div>
+  );
+}
+
+/** Render ✓/△/✗ candidate reason lines with consistent colour coding. */
+function ReasonList({ lines }: { lines: CandidateReasonLine[] }) {
+  if (lines.length === 0) return null;
+  return (
+    <ul style={{ margin: '0.3rem 0 0', paddingLeft: '1.2rem', fontSize: '0.88rem' }}>
+      {lines.map((l, j) => (
+        <li key={j} style={{ color: l.mark === '✓' ? C.ok : l.mark === '✗' ? C.danger : C.warn }}>
+          {l.mark} {l.text}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** A small pill badge (state / recommendation markers). */
+function Badge({ text, bg }: { text: string; bg: string }) {
+  return (
+    <span
+      style={{
+        background: bg,
+        color: '#fff',
+        borderRadius: 999,
+        padding: '0.05rem 0.5rem',
+        fontSize: '0.75rem',
+      }}
+    >
+      {text}
+    </span>
   );
 }
 
@@ -231,16 +270,21 @@ export default function ReviewDetailPage() {
 
   const pending = review.status === 'PENDING';
   const isTest = environment === 'test';
+  // v2 (M9D) property decision states. isMatch = fully confirmed; needsConfirm =
+  // best candidate with an unconfirmed required fact; else (NO_MATCH / none).
   const isMatch = propertyMatch?.decision === 'MATCH' && !!property;
+  const needsConfirm = propertyMatch?.decision === 'NEEDS_CONFIRMATION';
   const propReasons = (propertyMatch?.reasons ?? [])
     .filter((r) => r.includes('_MATCH'))
     .map(propertyReasonThai)
     .filter(Boolean);
-  // NO_PROPERTY_MATCH presentation (owner-facing explanation of why nothing was
-  // auto-selected). Derived from data the matcher already stored — no recompute.
+  // NO_PROPERTY_MATCH / NEEDS_CONFIRMATION presentation — derived from data the
+  // matcher already stored (no recompute). The recommended candidate's reasons
+  // are the top-level propertyMatch.reasons; the rest are in `rejected`.
   const requirementLines = requirementLinesThai(propertyMatch?.requirement);
   const candidates = propertyMatch?.rejected ?? [];
   const closest = closestCandidateName(candidates);
+  const recommendedReasons = propertyMatch?.reasons ?? [];
 
   return (
     <main style={{ maxWidth: 780, margin: '0 auto', padding: '0 0.75rem' }}>
@@ -307,7 +351,10 @@ export default function ReviewDetailPage() {
         <>
           <Section title={REVIEW_SECTIONS.selectedProperty}>
             <Card tone="ok">
-              <p style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>{property!.name}</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <p style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>{property!.name}</p>
+                <Badge text={propertyStateLabelThai('MATCH')} bg={C.ok} />
+              </div>
               <p style={{ margin: '0.15rem 0 0', color: C.muted }}>
                 {business?.name ?? '—'}
                 {property!.area ? ` · ${property!.area}` : ''}
@@ -327,6 +374,106 @@ export default function ReviewDetailPage() {
             </Section>
           )}
         </>
+      ) : needsConfirm ? (
+        <Section title={REVIEW_SECTIONS.selectedProperty}>
+          {/* NEEDS_CONFIRMATION (v2) — a best candidate WAS found, but a required
+              fact is unconfirmed. Surface the recommendation clearly; never claim
+              the unknown requirement is satisfied. Presentation only. */}
+          <Card tone="warn">
+            <p style={{ margin: '0 0 0.5rem', fontWeight: 700 }}>{NEEDS_CONFIRMATION_SUMMARY}</p>
+
+            {/* Recommended property */}
+            <div
+              style={{
+                border: `1px solid ${C.warnBorder}`,
+                background: '#fff',
+                borderRadius: 6,
+                padding: '0.6rem',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <strong style={{ fontSize: '1.05rem' }}>
+                  {property?.name ?? 'ที่พักที่แนะนำ'}
+                </strong>
+                <Badge text={NEEDS_CONFIRMATION_RECOMMEND_BADGE} bg={C.ok} />
+                <Badge text={propertyStateLabelThai('NEEDS_CONFIRMATION')} bg={C.warn} />
+              </div>
+              {property && (
+                <p style={{ margin: '0.15rem 0 0', color: C.muted, fontSize: '0.9rem' }}>
+                  {business?.name ?? '—'}
+                  {property.area ? ` · ${property.area}` : ''}
+                  {property.maxGuests != null ? ` · รองรับสูงสุด ${property.maxGuests} คน` : ''}
+                </p>
+              )}
+              <p style={{ margin: '0.3rem 0 0', fontSize: '0.9rem' }}>
+                {NEEDS_CONFIRMATION_PROPERTY_NOTE}
+              </p>
+              {/* Compact pass / needs-confirmation summary */}
+              <ReasonList lines={needsConfirmationSummaryLines(recommendedReasons)} />
+              {/* Detailed reasons for the recommended property */}
+              <ReasonList
+                lines={recommendedReasons
+                  .map(candidateReasonThai)
+                  .filter((x): x is CandidateReasonLine => x !== null)}
+              />
+            </div>
+
+            {/* Plain-Thai owner guidance */}
+            <p
+              style={{
+                margin: '0.6rem 0 0',
+                fontSize: '0.9rem',
+                background: '#fff',
+                border: `1px solid ${C.warnBorder}`,
+                borderRadius: 6,
+                padding: '0.5rem 0.6rem',
+              }}
+            >
+              💡 {ownerGuidanceThai(property?.name ?? null, recommendedReasons)}
+            </p>
+
+            {/* Other evaluated candidates (each with its own state) */}
+            {candidates.length > 0 && (
+              <div style={{ marginTop: '0.75rem' }}>
+                <p style={{ margin: '0 0 0.3rem', fontWeight: 600, fontSize: '0.9rem' }}>
+                  ที่พักอื่นที่ระบบพิจารณา
+                </p>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {candidates.map((c, i) => (
+                    <div
+                      key={`${c.propertyName ?? 'candidate'}-${i}`}
+                      style={{
+                        border: `1px solid ${C.border}`,
+                        background: '#fff',
+                        borderRadius: 6,
+                        padding: '0.5rem 0.6rem',
+                      }}
+                    >
+                      <div
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}
+                      >
+                        <strong>{c.propertyName ?? 'ที่พัก'}</strong>
+                        <Badge
+                          text={propertyStateLabelThai(c.decision)}
+                          bg={c.decision === 'NO_MATCH' ? C.danger : C.warn}
+                        />
+                      </div>
+                      <ReasonList
+                        lines={c.reasons
+                          .map(candidateReasonThai)
+                          .filter((x): x is CandidateReasonLine => x !== null)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <p style={{ margin: '0.75rem 0 0', fontSize: '0.85rem', color: C.muted }}>
+              {NO_PROPERTY_MATCH_SAFE_NOTE}
+            </p>
+          </Card>
+        </Section>
       ) : (
         <Section title={REVIEW_SECTIONS.selectedProperty}>
           {/* NO_PROPERTY_MATCH — explain WHY nothing was auto-selected, in plain
@@ -501,6 +648,21 @@ export default function ReviewDetailPage() {
 
       {/* 10. One draft experience */}
       <Section title={REVIEW_SECTIONS.draft}>
+        {needsConfirm && (
+          <p
+            style={{
+              margin: '0 0 0.5rem',
+              fontSize: '0.9rem',
+              color: '#5c4500',
+              background: C.warnBg,
+              border: `1px solid ${C.warnBorder}`,
+              borderRadius: 6,
+              padding: '0.5rem 0.6rem',
+            }}
+          >
+            △ {DRAFT_NEEDS_CONFIRMATION_NOTE}
+          </p>
+        )}
         {pending ? (
           <>
             <textarea
@@ -579,7 +741,7 @@ export default function ReviewDetailPage() {
               </button>
             </div>
             <p style={{ fontSize: '0.85rem', color: C.warn, margin: '0.5rem 0 0' }}>
-              {REVIEW_DECISION_REMINDER}
+              {REVIEW_APPROVE_SEMANTIC_NOTE}
             </p>
           </>
         ) : (

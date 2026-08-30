@@ -19,6 +19,13 @@ import {
   requirementLinesThai,
   candidateReasonThai,
   closestCandidateName,
+  PROPERTY_STATE_LABELS,
+  propertyStateLabelThai,
+  NEEDS_CONFIRMATION_SUMMARY,
+  DRAFT_NEEDS_CONFIRMATION_NOTE,
+  REVIEW_APPROVE_SEMANTIC_NOTE,
+  needsConfirmationSummaryLines,
+  ownerGuidanceThai,
 } from '../app/settings/reviews/review-ui';
 import { mediaReasonThai } from '../app/settings/businesses/media-ui';
 
@@ -148,13 +155,10 @@ describe('NO_PROPERTY_MATCH explanation (owner-facing Thai)', () => {
   });
 
   it('17. candidate reasons map to ✓ / ✗ marks in plain Thai', () => {
-    expect(candidateReasonThai('CAPACITY_MISMATCH: 8 < 10')).toEqual({
-      mark: '✗',
-      text: 'รองรับจำนวนคนไม่พอ',
-    });
+    // v2 (M9D): a confirmed mismatch uses strong "ยืนยันแล้วว่า" language.
     expect(candidateReasonThai('BEACH_MISSING')).toEqual({
       mark: '✗',
-      text: 'ยังไม่ผ่านเงื่อนไขใกล้ทะเล',
+      text: 'ยืนยันแล้วว่าไม่ตรงเงื่อนไขใกล้ทะเล',
     });
     const cap = candidateReasonThai('CAPACITY_MATCH: 10 <= 15');
     expect(cap?.mark).toBe('✓');
@@ -178,5 +182,142 @@ describe('NO_PROPERTY_MATCH explanation (owner-facing Thai)', () => {
     ];
     expect(closestCandidateName(rejected)).toBe('Villa B');
     expect(closestCandidateName([])).toBeNull();
+  });
+});
+
+// ── Matching Semantics v2 Human Review UX (M9D) ──────────────────────────────
+// M7 v2 reference: both บางแสน pool villas have nearBeach UNKNOWN. Villa B is a
+// NEEDS_CONFIRMATION recommendation; Villa A is a NO_MATCH on capacity.
+describe('property state presentation (M9D)', () => {
+  it('state labels are owner-facing Thai, no raw enum names', () => {
+    expect(PROPERTY_STATE_LABELS.MATCH).toBe('ตรงเงื่อนไข');
+    expect(PROPERTY_STATE_LABELS.NEEDS_CONFIRMATION).toBe('แนะนำ แต่ต้องตรวจสอบเพิ่มเติม');
+    expect(PROPERTY_STATE_LABELS.NO_MATCH).toBe('ไม่ตรงเงื่อนไข');
+    for (const label of Object.values(PROPERTY_STATE_LABELS)) {
+      expect(label).not.toMatch(/MATCH|NEEDS_CONFIRMATION|NO_MATCH/);
+    }
+    expect(propertyStateLabelThai('NEEDS_CONFIRMATION')).toBe('แนะนำ แต่ต้องตรวจสอบเพิ่มเติม');
+    expect(propertyStateLabelThai('unknown-state')).toBe('');
+  });
+});
+
+describe('candidate reason classes (M9D)', () => {
+  it('*_MATCH → ✓ confirmed, positive language', () => {
+    expect(candidateReasonThai('AREA_MATCH: บางแสน')?.mark).toBe('✓');
+    expect(candidateReasonThai('PRIVATE_POOL_MATCH')).toEqual({ mark: '✓', text: 'มีสระส่วนตัว' });
+    expect(candidateReasonThai('BEACH_MATCH')).toEqual({
+      mark: '✓',
+      text: 'ข้อมูลยืนยันว่าใกล้ทะเล',
+    });
+    expect(candidateReasonThai('CAPACITY_MATCH: 10 <= 15')).toEqual({
+      mark: '✓',
+      text: 'รองรับลูกค้า 10 คนได้ (สูงสุด 15 คน)',
+    });
+  });
+
+  it('*_UNKNOWN → △ needs confirmation, never phrased as a failure', () => {
+    const beach = candidateReasonThai('BEACH_UNKNOWN');
+    expect(beach).toEqual({ mark: '△', text: 'ยังไม่มีข้อมูลยืนยันเรื่องใกล้ทะเล' });
+    // Reads as "not yet confirmed", never as a confirmed failure.
+    expect(beach!.text).toContain('ยังไม่');
+    expect(beach!.text).not.toContain('ยืนยันแล้ว');
+    expect(candidateReasonThai('PRIVATE_POOL_UNKNOWN')).toEqual({
+      mark: '△',
+      text: 'ยังไม่ได้ระบุข้อมูลสระส่วนตัว',
+    });
+    expect(candidateReasonThai('CAPACITY_UNKNOWN')?.mark).toBe('△');
+    expect(candidateReasonThai('AREA_UNKNOWN')?.mark).toBe('△');
+  });
+
+  it('*_MISMATCH / *_MISSING → ✗ confirmed mismatch, strong language', () => {
+    expect(candidateReasonThai('CAPACITY_MISMATCH: 10 > 8')).toEqual({
+      mark: '✗',
+      text: 'รองรับได้สูงสุด 8 คน แต่ลูกค้าต้องการ 10 คน',
+    });
+    expect(candidateReasonThai('BEACH_MISSING')).toEqual({
+      mark: '✗',
+      text: 'ยืนยันแล้วว่าไม่ตรงเงื่อนไขใกล้ทะเล',
+    });
+    expect(candidateReasonThai('PRIVATE_POOL_MISSING')?.text).toContain('ยืนยันแล้วว่าไม่มีสระ');
+  });
+
+  it('TYPE_COMPATIBLE → ✓ owner-friendly, no alias-graph jargon', () => {
+    const line = candidateReasonThai('TYPE_COMPATIBLE: house~pool_villa');
+    expect(line?.mark).toBe('✓');
+    expect(line?.text).toBe('ลูกค้าระบุ "บ้านพัก" และที่พักประเภท "พูลวิลล่า" ถือว่าเข้ากันได้');
+    expect(line?.text).not.toMatch(/TYPE_COMPATIBLE|~|alias/);
+  });
+});
+
+describe('M7 v2 candidate UI (M9D)', () => {
+  const villaB = [
+    'AREA_MATCH: บางแสน',
+    'CAPACITY_MATCH: 10 <= 15',
+    'PRIVATE_POOL_MATCH',
+    'TYPE_COMPATIBLE: house~pool_villa',
+    'BEACH_UNKNOWN',
+  ];
+  const villaA = [
+    'AREA_MATCH: บางแสน',
+    'CAPACITY_MISMATCH: 10 > 8',
+    'PRIVATE_POOL_MATCH',
+    'BEACH_UNKNOWN',
+  ];
+
+  it('Villa B: BEACH_UNKNOWN shows as △, never ✗, and pool/area/capacity as ✓', () => {
+    const lines = villaB.map(candidateReasonThai).filter(Boolean);
+    const beach = lines.find((l) => l!.text.includes('ใกล้ทะเล'));
+    expect(beach!.mark).toBe('△');
+    expect(lines.filter((l) => l!.mark === '✓').length).toBeGreaterThanOrEqual(3);
+    expect(lines.some((l) => l!.mark === '✗')).toBe(false);
+  });
+
+  it('Villa A: capacity mismatch is the ✗; BEACH_UNKNOWN stays △ (not the failure)', () => {
+    const lines = villaA.map(candidateReasonThai).filter(Boolean);
+    const cap = lines.find((l) => l!.text.includes('รองรับได้สูงสุด'));
+    expect(cap!.mark).toBe('✗');
+    const beach = lines.find((l) => l!.text.includes('ใกล้ทะเล'));
+    expect(beach!.mark).toBe('△');
+  });
+
+  it('NEEDS_CONFIRMATION summary counts pass + items-to-confirm', () => {
+    const summary = needsConfirmationSummaryLines(villaB);
+    expect(summary).toContainEqual({ mark: '✓', text: 'ผ่านเงื่อนไขหลัก' });
+    expect(summary).toContainEqual({ mark: '△', text: 'ต้องตรวจสอบเพิ่มเติม 1 รายการ' });
+    expect(NEEDS_CONFIRMATION_SUMMARY).toBe('พบที่พักที่น่าแนะนำ แต่มีข้อมูลบางอย่างที่ต้องยืนยัน');
+  });
+
+  it('owner guidance names the property, its strengths, and the item to verify', () => {
+    const g = ownerGuidanceThai('Villa B', villaB);
+    expect(g).toContain('Villa B');
+    expect(g).toContain('มีสระส่วนตัว');
+    expect(g).toContain('ยังไม่มีข้อมูลยืนยันเรื่องใกล้ทะเล');
+    expect(g).toContain('กรุณาตรวจสอบก่อนตอบลูกค้า');
+    // Never claims the unknown as satisfied.
+    expect(g).not.toContain('ข้อมูลยืนยันว่าใกล้ทะเล');
+  });
+});
+
+describe('draft + approve wording (M9D)', () => {
+  it('draft warning tells the owner not to confirm unverified data', () => {
+    expect(DRAFT_NEEDS_CONFIRMATION_NOTE).toBe(
+      'ข้อความนี้ยังไม่ควรยืนยันข้อมูลที่ระบบระบุว่าต้องตรวจสอบ',
+    );
+  });
+  it('approve semantic note is explicit that nothing is posted to Facebook', () => {
+    expect(REVIEW_APPROVE_SEMANTIC_NOTE).toContain('ยังไม่ได้โพสต์หรือคอมเมนต์บน Facebook');
+    expect(REVIEW_APPROVE_SEMANTIC_NOTE).toContain('ยืนยันข้อความสำหรับขั้นตอนถัดไป');
+  });
+});
+
+describe('historical v1 compatibility (M9D)', () => {
+  it('an old v1 blob (BEACH_MISSING, no *_UNKNOWN) still renders', () => {
+    // Old M7 v1 rejection reasons — must degrade gracefully.
+    const v1 = ['AREA_MATCH: บางแสน', 'CAPACITY_MISMATCH: 10 > 8', 'BEACH_MISSING'];
+    const lines = v1.map(candidateReasonThai).filter(Boolean);
+    expect(lines).toHaveLength(3);
+    expect(lines.find((l) => l!.text.includes('ใกล้ทะเล'))!.mark).toBe('✗');
+    // No *_UNKNOWN in the blob → no △ invented.
+    expect(lines.some((l) => l!.mark === '△')).toBe(false);
   });
 });

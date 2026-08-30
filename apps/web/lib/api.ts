@@ -1026,7 +1026,9 @@ export const api = {
       // SPRINT 016B — Property-match review context + warnings.
       propertyMatch: {
         id: string;
-        decision: 'MATCH' | 'NO_MATCH';
+        // v2 (M9C): NEEDS_CONFIRMATION = best candidate with an unconfirmed
+        // required fact. Older rows only ever hold MATCH / NO_MATCH.
+        decision: 'MATCH' | 'NEEDS_CONFIRMATION' | 'NO_MATCH';
         propertyId: string | null;
         propertyName: string | null;
         reasons: string[];

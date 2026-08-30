@@ -176,31 +176,72 @@ export interface CandidateReasonLine {
   text: string;
 }
 
-/** Map a per-candidate matcher reason code to a plain-Thai ✓/✗/△ line. */
+/**
+ * Map a per-candidate matcher reason code to a plain-Thai ✓/△/✗ line.
+ *
+ * Semantics v2 (M9D): three classes are worded distinctly —
+ *   ✓ *_MATCH / TYPE_COMPATIBLE  → confirmed, positive language
+ *   △ *_UNKNOWN / soft           → "ยังไม่มีข้อมูลยืนยัน…" (NEVER a failure)
+ *   ✗ *_MISMATCH / *_MISSING     → confirmed, strong "ยืนยันแล้วว่า…" language
+ * Only a CONFIRMED NO/mismatch uses strong ไม่มี/ไม่ตรง wording.
+ */
 export function candidateReasonThai(reason: string): CandidateReasonLine | null {
-  const [code, detail] = reason.split(':').map((s) => s.trim());
-  const num = detail && /\d/.test(detail) ? ` (${detail})` : '';
+  const [code, detailRaw] = reason.split(':').map((s) => s.trim());
+  const detail = detailRaw ?? '';
+
+  // Capacity carries numbers — render them for the owner.
+  if (code === 'CAPACITY_MATCH') {
+    const m = detail.match(/(\d+)\s*<=\s*(\d+)/);
+    return m
+      ? { mark: '✓', text: `รองรับลูกค้า ${m[1]} คนได้ (สูงสุด ${m[2]} คน)` }
+      : { mark: '✓', text: 'รองรับจำนวนคนได้' };
+  }
+  if (code === 'CAPACITY_MISMATCH') {
+    const m = detail.match(/(\d+)\s*>\s*(\d+)/);
+    return m
+      ? { mark: '✗', text: `รองรับได้สูงสุด ${m[2]} คน แต่ลูกค้าต้องการ ${m[1]} คน` }
+      : { mark: '✗', text: 'รองรับจำนวนคนไม่พอ' };
+  }
+  // Compatible (non-exact) accommodation type — owner-friendly, no alias jargon.
+  if (code === 'TYPE_COMPATIBLE') {
+    const m = detail.match(/^(.+?)~(.+)$/);
+    if (m) {
+      return {
+        mark: '✓',
+        text: `ลูกค้าระบุ "${accommodationTypeThai(m[1]!.trim())}" และที่พักประเภท "${accommodationTypeThai(
+          m[2]!.trim(),
+        )}" ถือว่าเข้ากันได้`,
+      };
+    }
+    return { mark: '✓', text: 'ประเภทที่พักเข้ากันได้' };
+  }
+
   const map: Record<string, CandidateReasonLine> = {
-    AREA_MATCH: { mark: '✓', text: 'พื้นที่ตรงกับที่ลูกค้าต้องการ' },
-    CAPACITY_MATCH: { mark: '✓', text: 'รองรับจำนวนคนได้' },
+    // ✓ confirmed
+    AREA_MATCH: { mark: '✓', text: 'อยู่ในพื้นที่ที่ลูกค้าต้องการ' },
     BEDROOMS_MATCH: { mark: '✓', text: 'ห้องนอนเพียงพอ' },
     TYPE_MATCH: { mark: '✓', text: 'ตรงประเภทที่พักที่ลูกค้าหา' },
     PRIVATE_POOL_MATCH: { mark: '✓', text: 'มีสระส่วนตัว' },
-    BEACH_MATCH: { mark: '✓', text: 'ติด/ใกล้ทะเล' },
-    RIVER_MATCH: { mark: '✓', text: 'ริมแม่น้ำ' },
+    BEACH_MATCH: { mark: '✓', text: 'ข้อมูลยืนยันว่าใกล้ทะเล' },
+    RIVER_MATCH: { mark: '✓', text: 'ข้อมูลยืนยันว่าอยู่ริมแม่น้ำ' },
     AMENITY_MATCH: { mark: '✓', text: 'มีสิ่งที่ลูกค้าต้องการ' },
-    CAPACITY_MISMATCH: { mark: '✗', text: 'รองรับจำนวนคนไม่พอ' },
-    AREA_MISMATCH: { mark: '✗', text: 'อยู่นอกพื้นที่ที่ลูกค้าต้องการ' },
-    BEDROOMS_MISMATCH: { mark: '✗', text: 'ห้องนอนไม่พอ' },
-    TYPE_MISMATCH: { mark: '△', text: 'ประเภทที่พักในระบบไม่ตรงกับที่ลูกค้าระบุ' },
-    PRIVATE_POOL_MISSING: { mark: '✗', text: 'ยังไม่ผ่านเงื่อนไขสระส่วนตัว' },
-    BEACH_MISSING: { mark: '✗', text: 'ยังไม่ผ่านเงื่อนไขใกล้ทะเล' },
-    RIVER_MISSING: { mark: '✗', text: 'ยังไม่ผ่านเงื่อนไขริมแม่น้ำ' },
+    // △ needs confirmation (UNKNOWN) — never a failure
+    AREA_UNKNOWN: { mark: '△', text: 'ยังไม่มีข้อมูลยืนยันพื้นที่ที่ตั้ง' },
+    CAPACITY_UNKNOWN: { mark: '△', text: 'ยังไม่มีข้อมูลจำนวนผู้เข้าพักสูงสุด' },
+    BEDROOMS_UNKNOWN: { mark: '△', text: 'ยังไม่มีข้อมูลจำนวนห้องนอน' },
+    PRIVATE_POOL_UNKNOWN: { mark: '△', text: 'ยังไม่ได้ระบุข้อมูลสระส่วนตัว' },
+    BEACH_UNKNOWN: { mark: '△', text: 'ยังไม่มีข้อมูลยืนยันเรื่องใกล้ทะเล' },
+    RIVER_UNKNOWN: { mark: '△', text: 'ยังไม่มีข้อมูลยืนยันเรื่องริมแม่น้ำ' },
     AMENITY_MISSING: { mark: '△', text: 'อาจไม่มีสิ่งอำนวยความสะดวกที่ลูกค้าต้องการบางอย่าง' },
+    TYPE_MISMATCH: { mark: '△', text: 'ประเภทที่พักในระบบไม่ตรงกับที่ลูกค้าระบุ' },
+    // ✗ confirmed mismatch — strong, confirmed language
+    AREA_MISMATCH: { mark: '✗', text: 'ยืนยันแล้วว่าอยู่นอกพื้นที่ที่ลูกค้าต้องการ' },
+    BEDROOMS_MISMATCH: { mark: '✗', text: 'ยืนยันแล้วว่าห้องนอนไม่พอ' },
+    PRIVATE_POOL_MISSING: { mark: '✗', text: 'ยืนยันแล้วว่าไม่มีสระส่วนตัว' },
+    BEACH_MISSING: { mark: '✗', text: 'ยืนยันแล้วว่าไม่ตรงเงื่อนไขใกล้ทะเล' },
+    RIVER_MISSING: { mark: '✗', text: 'ยืนยันแล้วว่าไม่ตรงเงื่อนไขริมแม่น้ำ' },
   };
-  const base = map[code ?? ''];
-  if (!base) return null; // unknown/internal code → hidden from the owner flow
-  return { mark: base.mark, text: base.mark === '✓' ? `${base.text}${num}` : base.text };
+  return map[code ?? ''] ?? null; // unknown/internal code → hidden from the owner flow
 }
 
 /** Count of hard failures (✗) in a candidate's reasons — lower is closer. */
@@ -224,6 +265,68 @@ export function closestCandidateName(
     }
   }
   return best?.name ?? null;
+}
+
+// ── Property decision states (M9D — Matching Semantics v2) ────────────────────
+
+export type PropertyDecisionState = 'MATCH' | 'NEEDS_CONFIRMATION' | 'NO_MATCH';
+
+/** Owner-facing Thai label for a property decision state (raw enum stays hidden). */
+export const PROPERTY_STATE_LABELS: Record<PropertyDecisionState, string> = {
+  MATCH: 'ตรงเงื่อนไข',
+  NEEDS_CONFIRMATION: 'แนะนำ แต่ต้องตรวจสอบเพิ่มเติม',
+  NO_MATCH: 'ไม่ตรงเงื่อนไข',
+};
+
+export function propertyStateLabelThai(decision: string | null | undefined): string {
+  return PROPERTY_STATE_LABELS[(decision ?? '') as PropertyDecisionState] ?? '';
+}
+
+// NEEDS_CONFIRMATION section wording.
+export const NEEDS_CONFIRMATION_SUMMARY = 'พบที่พักที่น่าแนะนำ แต่มีข้อมูลบางอย่างที่ต้องยืนยัน';
+export const NEEDS_CONFIRMATION_PROPERTY_NOTE = 'เหมาะกับความต้องการส่วนใหญ่ของลูกค้า';
+export const NEEDS_CONFIRMATION_RECOMMEND_BADGE = 'แนะนำ';
+/** Info note shown near the draft when the property result needs confirmation. */
+export const DRAFT_NEEDS_CONFIRMATION_NOTE =
+  'ข้อความนี้ยังไม่ควรยืนยันข้อมูลที่ระบบระบุว่าต้องตรวจสอบ';
+/** Explicit semantic warning for the approve action (approval ≠ a Facebook post). */
+export const REVIEW_APPROVE_SEMANTIC_NOTE =
+  'การอนุมัติหน้านี้เป็นการยืนยันข้อความสำหรับขั้นตอนถัดไป ยังไม่ได้โพสต์หรือคอมเมนต์บน Facebook';
+
+/**
+ * Compact pass/needs-confirmation summary for the recommended property, e.g.
+ *   ✓ ผ่านเงื่อนไขหลัก
+ *   △ ต้องตรวจสอบเพิ่มเติม 1 รายการ
+ */
+export function needsConfirmationSummaryLines(reasons: string[]): CandidateReasonLine[] {
+  const lines = reasons
+    .map(candidateReasonThai)
+    .filter((x): x is CandidateReasonLine => x !== null);
+  const confirmed = lines.filter((l) => l.mark === '✓').length;
+  const toConfirm = lines.filter((l) => l.mark === '△').length;
+  const out: CandidateReasonLine[] = [];
+  if (confirmed > 0) out.push({ mark: '✓', text: 'ผ่านเงื่อนไขหลัก' });
+  if (toConfirm > 0) out.push({ mark: '△', text: `ต้องตรวจสอบเพิ่มเติม ${toConfirm} รายการ` });
+  return out;
+}
+
+/**
+ * Plain-Thai owner guidance for a NEEDS_CONFIRMATION recommendation — states the
+ * confirmed strengths and the unconfirmed item(s), and asks to verify before
+ * replying. Built only from stored reason codes (no fabricated facts).
+ */
+export function ownerGuidanceThai(propertyName: string | null, reasons: string[]): string {
+  const lines = reasons
+    .map(candidateReasonThai)
+    .filter((x): x is CandidateReasonLine => x !== null);
+  const strengths = lines.filter((l) => l.mark === '✓').map((l) => l.text);
+  const toConfirm = lines.filter((l) => l.mark === '△').map((l) => l.text);
+  const name = propertyName ?? 'ที่พักนี้';
+  let msg = `ระบบแนะนำ ${name}`;
+  if (strengths.length > 0) msg += ` เนื่องจาก${strengths.slice(0, 3).join(' ')}`;
+  if (toConfirm.length > 0) msg += ` แต่${toConfirm.join(' และ')}`;
+  msg += ' กรุณาตรวจสอบก่อนตอบลูกค้า';
+  return msg;
 }
 
 export function contactTypeThai(type: string): string {
