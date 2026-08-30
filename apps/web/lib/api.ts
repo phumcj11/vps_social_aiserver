@@ -1031,6 +1031,7 @@ export const api = {
         matcherVersion: string;
         candidatesEvaluated: number;
         requirement: Record<string, unknown>;
+        rejected: { propertyName: string | null; decision: string; reasons: string[] }[];
       } | null;
       property: {
         id: string;

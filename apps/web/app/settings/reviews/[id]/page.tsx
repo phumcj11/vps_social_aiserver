@@ -32,6 +32,14 @@ import {
   contactTypeThai,
   draftPermissionLabel,
   publicPermissionLabel,
+  NO_PROPERTY_MATCH_SUMMARY,
+  NO_PROPERTY_MATCH_EXPLANATION,
+  NO_PROPERTY_MATCH_SAFE_NOTE,
+  CUSTOMER_NEEDS_TITLE,
+  CANDIDATE_CLOSEST_BADGE,
+  requirementLinesThai,
+  candidateReasonThai,
+  closestCandidateName,
 } from '../review-ui';
 
 interface DraftView {
@@ -228,6 +236,11 @@ export default function ReviewDetailPage() {
     .filter((r) => r.includes('_MATCH'))
     .map(propertyReasonThai)
     .filter(Boolean);
+  // NO_PROPERTY_MATCH presentation (owner-facing explanation of why nothing was
+  // auto-selected). Derived from data the matcher already stored — no recompute.
+  const requirementLines = requirementLinesThai(propertyMatch?.requirement);
+  const candidates = propertyMatch?.rejected ?? [];
+  const closest = closestCandidateName(candidates);
 
   return (
     <main style={{ maxWidth: 780, margin: '0 auto', padding: '0 0.75rem' }}>
@@ -316,11 +329,93 @@ export default function ReviewDetailPage() {
         </>
       ) : (
         <Section title={REVIEW_SECTIONS.selectedProperty}>
+          {/* NO_PROPERTY_MATCH — explain WHY nothing was auto-selected, in plain
+              Thai, from data the matcher already stored. Suggested Property stays
+              NONE; nothing here changes matcher/policy decisions. */}
           <Card tone="warn">
-            <p style={{ margin: '0 0 0.3rem', fontWeight: 700 }}>⚠ ไม่มีที่พักที่ตรงทั้งหมด</p>
-            <p style={{ margin: 0, fontSize: '0.9rem' }}>
-              ระบบตอบได้เฉพาะระดับธุรกิจ ไม่อ้างถึงที่พักเฉพาะ ราคา หรือยืนยันห้องว่าง —
-              กรุณาตรวจสอบก่อนอนุมัติ
+            <p style={{ margin: '0 0 0.3rem', fontWeight: 700 }}>⚠ {NO_PROPERTY_MATCH_SUMMARY}</p>
+
+            {requirementLines.length > 0 && (
+              <div style={{ marginTop: '0.5rem' }}>
+                <p style={{ margin: '0 0 0.2rem', fontWeight: 600, fontSize: '0.9rem' }}>
+                  {CUSTOMER_NEEDS_TITLE}
+                </p>
+                <ul style={{ margin: 0, paddingLeft: '1.2rem', fontSize: '0.9rem' }}>
+                  {requirementLines.map((r) => (
+                    <li key={r.label}>
+                      {r.label}: {r.value}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {candidates.length > 0 && (
+              <div style={{ marginTop: '0.75rem', display: 'grid', gap: 8 }}>
+                {candidates.map((c, i) => {
+                  const lines = c.reasons
+                    .map(candidateReasonThai)
+                    .filter((x): x is NonNullable<typeof x> => x !== null);
+                  const isClosest = c.propertyName != null && c.propertyName === closest;
+                  return (
+                    <div
+                      key={`${c.propertyName ?? 'candidate'}-${i}`}
+                      style={{
+                        border: `1px solid ${C.warnBorder}`,
+                        background: '#fff',
+                        borderRadius: 6,
+                        padding: '0.5rem 0.6rem',
+                      }}
+                    >
+                      <div
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}
+                      >
+                        <strong>{c.propertyName ?? 'ที่พัก'}</strong>
+                        {isClosest && (
+                          <span
+                            style={{
+                              background: C.warn,
+                              color: '#fff',
+                              borderRadius: 999,
+                              padding: '0.05rem 0.5rem',
+                              fontSize: '0.75rem',
+                            }}
+                          >
+                            {CANDIDATE_CLOSEST_BADGE}
+                          </span>
+                        )}
+                      </div>
+                      {lines.length > 0 && (
+                        <ul
+                          style={{
+                            margin: '0.3rem 0 0',
+                            paddingLeft: '1.2rem',
+                            fontSize: '0.88rem',
+                          }}
+                        >
+                          {lines.map((l, j) => (
+                            <li
+                              key={j}
+                              style={{
+                                color: l.mark === '✓' ? C.ok : l.mark === '✗' ? C.danger : C.warn,
+                              }}
+                            >
+                              {l.mark} {l.text}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <p style={{ margin: '0.75rem 0 0', fontSize: '0.9rem' }}>
+              {NO_PROPERTY_MATCH_EXPLANATION}
+            </p>
+            <p style={{ margin: '0.3rem 0 0', fontSize: '0.85rem', color: C.muted }}>
+              {NO_PROPERTY_MATCH_SAFE_NOTE}
             </p>
           </Card>
         </Section>

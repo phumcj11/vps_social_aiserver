@@ -88,6 +88,14 @@ function publicReviewPropertyMatch(
     matcherVersion: m.matcherVersion,
     candidatesEvaluated: m.candidatesEvaluated,
     requirement: m.reasons.requirement,
+    // Candidate properties considered + why each was/ wasn't a full match — used
+    // by the Human Review UI to explain a NO_PROPERTY_MATCH. Presentation data
+    // only (already computed and stored by the matcher; not recomputed here).
+    rejected: m.reasons.rejected.map((r) => ({
+      propertyName: r.propertyName,
+      decision: r.decision,
+      reasons: r.reasons,
+    })),
   };
 }
 

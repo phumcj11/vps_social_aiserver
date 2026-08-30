@@ -14,6 +14,11 @@ import {
   propertyReasonThai,
   publicPermissionLabel,
   draftPermissionLabel,
+  NO_PROPERTY_MATCH_SUMMARY,
+  NO_PROPERTY_MATCH_EXPLANATION,
+  requirementLinesThai,
+  candidateReasonThai,
+  closestCandidateName,
 } from '../app/settings/reviews/review-ui';
 import { mediaReasonThai } from '../app/settings/businesses/media-ui';
 
@@ -77,7 +82,9 @@ describe('human review commercial UX (owner-facing Thai)', () => {
 
   it('10. saving text is distinct from approval (labels differ)', () => {
     expect(REVIEW_SAVE_LABEL).toBe('บันทึกข้อความ');
-    expect(REVIEW_APPROVE_LABEL).toBe('อนุมัติ');
+    // The approve button says "อนุมัติข้อความ" — approving the message, making it
+    // explicit that a decision is recorded and nothing is posted to Facebook.
+    expect(REVIEW_APPROVE_LABEL).toBe('อนุมัติข้อความ');
     expect(REVIEW_SAVE_LABEL).not.toBe(REVIEW_APPROVE_LABEL);
   });
 
@@ -105,5 +112,71 @@ describe('human review commercial UX (owner-facing Thai)', () => {
       REVIEW_SECTION_ORDER.indexOf('history'),
     );
     expect(REVIEW_SECTION_ORDER.at(-1)).toBe('advanced');
+  });
+});
+
+// ── NO_PROPERTY_MATCH owner-facing explanation (M8C) ─────────────────────────
+// Modelled on the live M7 review: customer wants บางแสน / 10 คน / สระส่วนตัว /
+// ใกล้ทะเล / บ้านพัก; Villa A fails on capacity, Villa B fails on near-sea only.
+describe('NO_PROPERTY_MATCH explanation (owner-facing Thai)', () => {
+  const M7_REQUIREMENT = {
+    area: 'บางแสน',
+    guests: 10,
+    needsPrivatePool: true,
+    needsBeach: true,
+    accommodationType: 'house',
+  };
+
+  it('15. summary + explanation are plain Thai (no codes)', () => {
+    expect(NO_PROPERTY_MATCH_SUMMARY).toBe('ยังไม่มีที่พักที่ตรงครบทุกเงื่อนไข');
+    expect(NO_PROPERTY_MATCH_EXPLANATION).toBe(
+      'ระบบจึงยังไม่เลือกที่พักให้อัตโนมัติ และส่งมาให้เจ้าของตรวจสอบ',
+    );
+    expect(NO_PROPERTY_MATCH_SUMMARY).not.toMatch(/NO_PROPERTY_MATCH|_MATCH|_MISSING/);
+  });
+
+  it('16. requirement lines render the M7 needs in plain Thai', () => {
+    const lines = requirementLinesThai(M7_REQUIREMENT);
+    const map = Object.fromEntries(lines.map((l) => [l.label, l.value]));
+    expect(map['พื้นที่']).toBe('บางแสน');
+    expect(map['จำนวนผู้เข้าพัก']).toBe('10 คน');
+    expect(map['สระส่วนตัว']).toBe('ต้องการ');
+    expect(map['ใกล้ทะเล']).toBe('ต้องการ');
+    // accommodationType 'house' → บ้านพัก (never the raw code).
+    expect(map['ประเภทที่พัก']).toBe('บ้านพัก');
+    for (const l of lines) expect(l.value).not.toMatch(/house|_MATCH|true/);
+  });
+
+  it('17. candidate reasons map to ✓ / ✗ marks in plain Thai', () => {
+    expect(candidateReasonThai('CAPACITY_MISMATCH: 8 < 10')).toEqual({
+      mark: '✗',
+      text: 'รองรับจำนวนคนไม่พอ',
+    });
+    expect(candidateReasonThai('BEACH_MISSING')).toEqual({
+      mark: '✗',
+      text: 'ยังไม่ผ่านเงื่อนไขใกล้ทะเล',
+    });
+    const cap = candidateReasonThai('CAPACITY_MATCH: 10 <= 15');
+    expect(cap?.mark).toBe('✓');
+    // Unknown/internal codes are hidden from the owner flow.
+    expect(candidateReasonThai('SOME_INTERNAL_CODE')).toBeNull();
+  });
+
+  it('18. the closest candidate is the one with the fewest hard failures', () => {
+    // Villa B fails only near-sea; Villa A fails capacity → Villa B is closest.
+    const rejected = [
+      { propertyName: 'Villa A', reasons: ['CAPACITY_MISMATCH: 8 < 10', 'AREA_MATCH: บางแสน'] },
+      {
+        propertyName: 'Villa B',
+        reasons: [
+          'AREA_MATCH: บางแสน',
+          'CAPACITY_MATCH: 10 <= 15',
+          'PRIVATE_POOL_MATCH',
+          'BEACH_MISSING',
+        ],
+      },
+    ];
+    expect(closestCandidateName(rejected)).toBe('Villa B');
+    expect(closestCandidateName([])).toBeNull();
   });
 });
