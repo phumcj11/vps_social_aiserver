@@ -1707,11 +1707,12 @@ export class DrizzleStore implements Store {
       if (r.decision === 'MATCH') businessMatch.MATCH = Number(r.n);
       else if (r.decision === 'NO_MATCH') businessMatch.NO_MATCH = Number(r.n);
     }
-    const propertyMatch = { MATCH: 0, NO_MATCH: 0 };
+    const propertyMatch = { MATCH: 0, NEEDS_CONFIRMATION: 0, NO_MATCH: 0 };
     let candidatesEvaluated = 0;
     for (const r of pmRows) {
       candidatesEvaluated += Number(r.evaluated);
       if (r.decision === 'MATCH') propertyMatch.MATCH = Number(r.n);
+      else if (r.decision === 'NEEDS_CONFIRMATION') propertyMatch.NEEDS_CONFIRMATION = Number(r.n);
       else if (r.decision === 'NO_MATCH') propertyMatch.NO_MATCH = Number(r.n);
     }
 

@@ -122,6 +122,7 @@ describe('MatchingCoordinator', () => {
       // bpStore, so the business has no Properties → a single NO_PROPERTY_MATCH.
       propertyCandidates: 0,
       propertyMatches: 0,
+      propertyNeedsConfirmation: 0,
       propertyNoMatches: 1,
       propertySkipped: 0,
     });

@@ -506,7 +506,10 @@ export interface CreateBusinessGroupSubscriptionInput {
 
 // ── Property Match (SPRINT 016B) ─────────────────────────────────────────────
 
-export type PropertyMatchDecision = 'MATCH' | 'NO_MATCH';
+// v2 (M9C): NEEDS_CONFIRMATION = a best candidate with no confirmed hard failure
+// but at least one REQUIRED fact UNKNOWN — surfaced for Human Review, never an
+// auto-confirmed MATCH. Historical rows only ever hold MATCH / NO_MATCH.
+export type PropertyMatchDecision = 'MATCH' | 'NEEDS_CONFIRMATION' | 'NO_MATCH';
 
 /** One rejected candidate recorded for auditability (why it lost / was excluded). */
 export interface PropertyMatchRejection {
@@ -567,7 +570,7 @@ export interface PropertyMatchFilter {
 /** Aggregate read model for the Property-match funnel (SPRINT 016B operations). */
 export interface MatchingFunnelCounts {
   businessMatch: { MATCH: number; NO_MATCH: number };
-  propertyMatch: { MATCH: number; NO_MATCH: number };
+  propertyMatch: { MATCH: number; NEEDS_CONFIRMATION: number; NO_MATCH: number };
   candidatesEvaluated: number;
   propertiesReceivingMatches: number;
   businessMatchWithNoPropertyMatch: number;

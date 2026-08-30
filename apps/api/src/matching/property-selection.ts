@@ -1,5 +1,12 @@
 import type { Property, PropertyAmenities } from '../business-property/types';
-import { matchProperty, type PropertyRequirement } from '../business-property/property-matcher';
+import {
+  matchProperty,
+  type PropertyRequirement,
+  type PropertyMatchState,
+  isHardFailureCode,
+  isUnknownCode,
+  isConfirmedMatchCode,
+} from '../business-property/property-matcher';
 import { factIsPresentV1 } from '../business-property/property-facts';
 
 /**
@@ -14,7 +21,7 @@ import { factIsPresentV1 } from '../business-property/property-facts';
  *      MATCH candidates; or NO_PROPERTY_MATCH when none qualify (never fabricate).
  */
 
-export const PROPERTY_MATCHER_VERSION = 'property-rules-v1';
+export const PROPERTY_MATCHER_VERSION = 'property-rules-v2';
 
 /** Requested amenity keyword → the persisted PropertyAmenities boolean field. */
 const REQUESTED_AMENITY_LEXICON: Array<{ key: keyof PropertyAmenities; terms: string[] }> = [
@@ -164,15 +171,22 @@ export function parsePropertyRequirement(
 
 export interface CandidateEvaluation {
   property: Property;
-  decision: 'MATCH' | 'NO_MATCH';
+  decision: PropertyMatchState;
   reasons: string[];
-  /** Deterministic ranking signals (all higher = better). */
+  /** Deterministic ranking signals (all higher = better unless noted). */
   rank: {
+    stateTier: number; // MATCH=2 > NEEDS_CONFIRMATION=1 > NO_MATCH=0
+    confirmedMatches: number; // count of confirmed required-fact matches
+    unknownRequired: number; // count of required facts that are UNKNOWN (LOWER better)
     areaExact: number; // 1 if the Property area token equals the requested area
     typeExact: number; // 1 if the Property type matches the requested type
     capacityCloseness: number; // higher = snugger fit (least excess capacity)
     coverage: number; // count of requested amenities/features the Property has
   };
+}
+
+function stateTierOf(decision: PropertyMatchState): number {
+  return decision === 'MATCH' ? 2 : decision === 'NEEDS_CONFIRMATION' ? 1 : 0;
 }
 
 function requestedAmenityReasons(
@@ -202,16 +216,16 @@ export function evaluatePropertyCandidate(
   const amenity = requestedAmenityReasons(property, req.requestedAmenities);
   const reasons = [...base.reasons, ...amenity.reasons];
 
-  // The Sprint-015 matchProperty foundation only counts a bare "_MATCH" reason as
-  // positive, but its area/capacity/type reasons carry a ": detail" suffix — so a
-  // property matching on area + capacity alone (no requested feature) would read
-  // as NO_MATCH there. The wiring layer computes the pipeline decision from the
-  // reason CODES: a hard mismatch/missing disqualifies; any "_MATCH" code (area,
-  // capacity, bedrooms, type, pool/beach/river) is a positive signal.
-  const hardCodes = base.reasons.map((r) => (r.split(':')[0] ?? '').trim());
-  const disqualified = hardCodes.some((c) => c.endsWith('_MISMATCH') || c.endsWith('_MISSING'));
-  const positive = hardCodes.some((c) => c.endsWith('_MATCH'));
-  const decision: 'MATCH' | 'NO_MATCH' = !disqualified && positive ? 'MATCH' : 'NO_MATCH';
+  // v2 (M9C): the decision comes straight from the matcher's 3-state
+  // classification over the REQUIRED-fact reason codes (MATCH /
+  // NEEDS_CONFIRMATION / NO_MATCH). Requested amenities are appended as SOFT
+  // preference signals only — they never change the decision (a missing
+  // requested amenity is a ranking penalty, never a disqualifier).
+  const decision = base.decision;
+  const baseCodes = base.reasons.map((r) => (r.split(':')[0] ?? '').trim());
+  const confirmedMatches = baseCodes.filter(isConfirmedMatchCode).length;
+  const unknownRequired = baseCodes.filter(isUnknownCode).length;
+  void isHardFailureCode; // hard failures are already reflected in `decision`
 
   const areaExact =
     req.area != null &&
@@ -248,6 +262,9 @@ export function evaluatePropertyCandidate(
     decision,
     reasons,
     rank: {
+      stateTier: stateTierOf(decision),
+      confirmedMatches,
+      unknownRequired,
       areaExact: areaExact ? 1 : 0,
       typeExact: typeExact ? 1 : 0,
       capacityCloseness,
@@ -257,25 +274,34 @@ export function evaluatePropertyCandidate(
 }
 
 export interface PropertySelection {
-  decision: 'MATCH' | 'NO_MATCH';
-  /** The winning Property when decision is MATCH; null for NO_PROPERTY_MATCH. */
+  decision: PropertyMatchState;
+  /** The winning Property when recommendable (MATCH or NEEDS_CONFIRMATION); null for NO_PROPERTY_MATCH. */
   selected: CandidateEvaluation | null;
   /** Reasons for the persisted decision. */
   reasons: string[];
-  /** Every evaluated candidate (winner first when MATCH). */
+  /** Every evaluated candidate (winner first when recommendable). */
   evaluations: CandidateEvaluation[];
   candidatesEvaluated: number;
 }
 
 /**
- * Deterministic ranking (Phase E): higher wins, in strict priority order —
- *   1. area exact
- *   2. requested type exact
- *   3. capacity fit (snuggest sufficient)
- *   4. requested feature/amenity coverage
- *   5. stable tie-break on Property id (never random)
+ * Deterministic ranking (v2, M9C): higher wins, strict priority order. The
+ * ranking is fully explainable from stored reason codes; no ML.
+ *   1. state tier — MATCH > NEEDS_CONFIRMATION (NO_MATCH is excluded upstream)
+ *   2. fewer UNKNOWN required facts (a more-confirmed candidate wins)
+ *   3. more confirmed required-fact matches
+ *   4. area exact
+ *   5. requested type exact
+ *   6. capacity fit (snuggest sufficient)
+ *   7. requested feature/amenity (preference) coverage
+ *   8. stable tie-break on Property id (never random)
  */
 function compareCandidates(a: CandidateEvaluation, b: CandidateEvaluation): number {
+  if (a.rank.stateTier !== b.rank.stateTier) return b.rank.stateTier - a.rank.stateTier;
+  if (a.rank.unknownRequired !== b.rank.unknownRequired)
+    return a.rank.unknownRequired - b.rank.unknownRequired; // fewer unknowns first
+  if (a.rank.confirmedMatches !== b.rank.confirmedMatches)
+    return b.rank.confirmedMatches - a.rank.confirmedMatches;
   if (a.rank.areaExact !== b.rank.areaExact) return b.rank.areaExact - a.rank.areaExact;
   if (a.rank.typeExact !== b.rank.typeExact) return b.rank.typeExact - a.rank.typeExact;
   if (a.rank.capacityCloseness !== b.rank.capacityCloseness)
@@ -289,9 +315,13 @@ export function selectBestProperty(
   req: ParsedPropertyRequirement,
 ): PropertySelection {
   const evaluations = properties.map((p) => evaluatePropertyCandidate(p, req));
-  const matches = evaluations.filter((e) => e.decision === 'MATCH').sort(compareCandidates);
+  // Recommendable = anything without a CONFIRMED hard failure: a full MATCH or a
+  // NEEDS_CONFIRMATION (best candidate with an unconfirmed required fact).
+  const recommendable = evaluations
+    .filter((e) => e.decision !== 'NO_MATCH')
+    .sort(compareCandidates);
 
-  if (matches.length === 0) {
+  if (recommendable.length === 0) {
     return {
       decision: 'NO_MATCH',
       selected: null,
@@ -301,11 +331,11 @@ export function selectBestProperty(
     };
   }
 
-  const winner = matches[0]!;
+  const winner = recommendable[0]!;
   // Winner first, then the rest for auditability.
   const ordered = [winner, ...evaluations.filter((e) => e !== winner)];
   return {
-    decision: 'MATCH',
+    decision: winner.decision, // MATCH or NEEDS_CONFIRMATION
     selected: winner,
     reasons: winner.reasons,
     evaluations: ordered,

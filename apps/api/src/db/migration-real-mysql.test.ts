@@ -139,9 +139,46 @@ describe.skipIf(!RUN)('real MySQL migration apply (Model C 0016/0017)', () => {
     execSync(`docker rm -f ${CONTAINER} 2>/dev/null || true`, { stdio: 'ignore' });
   });
 
-  it('4+7. final migration count is 19 (through 0018 applied via the runner)', async () => {
+  it('4+7. final migration count is 20 (through 0019 applied via the runner)', async () => {
     const [row] = await q<{ n: number }>('SELECT COUNT(*) AS n FROM __drizzle_migrations');
-    expect(Number(row!.n)).toBe(19);
+    expect(Number(row!.n)).toBe(20);
+  });
+
+  it('M9C. property_matches.decision holds NEEDS_CONFIRMATION (widened to 20)', async () => {
+    const [col] = await q<{ CHARACTER_MAXIMUM_LENGTH: number }>(
+      `SELECT character_maximum_length AS CHARACTER_MAXIMUM_LENGTH FROM information_schema.columns
+       WHERE table_schema=? AND table_name='property_matches' AND column_name='decision'`,
+      [DBNAME],
+    );
+    expect(Number(col?.CHARACTER_MAXIMUM_LENGTH)).toBeGreaterThanOrEqual(18);
+
+    // A NEEDS_CONFIRMATION row persists in full (not truncated).
+    const ws = await mkWorkspace();
+    const g = await mkGroup(ws);
+    const b = await mkBusiness(ws);
+    const sig = await mkSignal(ws, g);
+    await q(
+      'INSERT INTO opportunities (id, workspace_id, signal_id, decision, classifier_version) VALUES (?,?,?,?,?)',
+      [randomUUID(), ws, sig, 'ACCEPT', 'rules-v2'],
+    );
+    const [opp] = await q<{ id: string }>(
+      'SELECT id FROM opportunities WHERE signal_id=? LIMIT 1',
+      [sig],
+    );
+    const bmId = randomUUID();
+    await q(
+      'INSERT INTO business_matches (id, workspace_id, business_id, opportunity_id, decision, matcher_version) VALUES (?,?,?,?,?,?)',
+      [bmId, ws, b, opp!.id, 'MATCH', 'rules-v2'],
+    );
+    const pmId = randomUUID();
+    await q(
+      'INSERT INTO property_matches (id, workspace_id, opportunity_id, business_match_id, business_id, property_id, decision, reasons, matcher_version, candidates_evaluated) VALUES (?,?,?,?,?,?,?,?,?,?)',
+      [pmId, ws, opp!.id, bmId, b, null, 'NEEDS_CONFIRMATION', '{}', 'property-rules-v2', 1],
+    );
+    const [pm] = await q<{ decision: string }>('SELECT decision FROM property_matches WHERE id=?', [
+      pmId,
+    ]);
+    expect(pm?.decision).toBe('NEEDS_CONFIRMATION');
   });
 
   it('M9B. the four tri-state fact columns are nullable after 0018', async () => {

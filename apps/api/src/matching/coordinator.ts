@@ -30,6 +30,7 @@ export interface MatchRunSummary {
   // SPRINT 016B — Property stage (runs after each Business MATCH).
   propertyCandidates: number;
   propertyMatches: number;
+  propertyNeedsConfirmation: number; // v2 (M9C)
   propertyNoMatches: number;
   propertySkipped: number;
 }
@@ -106,6 +107,7 @@ export class MatchingCoordinator {
         skipped: 0,
         propertyCandidates: 0,
         propertyMatches: 0,
+        propertyNeedsConfirmation: 0,
         propertyNoMatches: 0,
         propertySkipped: 0,
       };
@@ -190,6 +192,7 @@ export class MatchingCoordinator {
       skipped: 0,
       propertyCandidates: 0,
       propertyMatches: 0,
+      propertyNeedsConfirmation: 0,
       propertyNoMatches: 0,
       propertySkipped: 0,
     };
@@ -258,6 +261,7 @@ export class MatchingCoordinator {
       candidatesEvaluated: selection.candidatesEvaluated,
     });
     if (selection.decision === 'MATCH') summary.propertyMatches += 1;
+    else if (selection.decision === 'NEEDS_CONFIRMATION') summary.propertyNeedsConfirmation += 1;
     else summary.propertyNoMatches += 1;
   }
 

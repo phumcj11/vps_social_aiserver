@@ -721,8 +721,9 @@ export const propertyMatches = mysqlTable(
       .references(() => businesses.id),
     // NULL when the decision is NO_MATCH (NO_PROPERTY_MATCH) — never a fabricated Property.
     propertyId: varchar('property_id', { length: 36 }).references(() => properties.id),
-    // MATCH | NO_MATCH (deterministic — no confidence, no score).
-    decision: varchar('decision', { length: 10 }).notNull(),
+    // v2 (M9C): MATCH | NEEDS_CONFIRMATION | NO_MATCH (deterministic — no
+    // confidence, no score). Widened to 20 to hold 'NEEDS_CONFIRMATION' (18).
+    decision: varchar('decision', { length: 20 }).notNull(),
     // JSON-encoded { reasons: string[], rejected: [...], requirement: {...} }. No secrets.
     reasons: text('reasons'),
     matcherVersion: varchar('matcher_version', { length: 40 }).notNull(),

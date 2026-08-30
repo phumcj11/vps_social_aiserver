@@ -10,7 +10,12 @@ import type { MediaAsset, MediaCategory, ImageResponseMode } from './types';
 export interface MediaSelectionContext {
   imageResponseMode: ImageResponseMode;
   /** The persisted Property match for this Business match, if any. */
-  propertyMatch: { decision: 'MATCH' | 'NO_MATCH'; propertyId: string | null } | null;
+  // v2 (M9C): decision may also be NEEDS_CONFIRMATION. Only a confirmed MATCH
+  // (below) ever selects a property image — NEEDS_CONFIRMATION does not.
+  propertyMatch: {
+    decision: 'MATCH' | 'NEEDS_CONFIRMATION' | 'NO_MATCH';
+    propertyId: string | null;
+  } | null;
   /** Canonical requested amenity keys parsed from the Opportunity (e.g. karaoke). */
   requestedAmenities: string[];
   /**

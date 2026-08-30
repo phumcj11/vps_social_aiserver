@@ -241,6 +241,46 @@ describe('deterministic property matcher', () => {
     });
     expect(r.decision).toBe('NO_MATCH');
   });
+
+  // v2 (M9C) — tri-state 3-state decisions directly on matchProperty.
+  it('NEEDS_CONFIRMATION when a required fact is UNKNOWN (private pool)', () => {
+    const pu = property({
+      location: { area: 'บางแสน' } as never,
+      capacity: { maxGuests: 15 } as never,
+      amenities: { privatePool: 'UNKNOWN' } as never,
+    });
+    const r = matchProperty(pu, {
+      area: 'บางแสน',
+      accommodationType: null,
+      guests: 10,
+      bedrooms: null,
+      needsPrivatePool: true,
+      needsBeach: false,
+      needsRiver: false,
+    });
+    expect(r.decision).toBe('NEEDS_CONFIRMATION');
+    expect(r.reasons).toContain('PRIVATE_POOL_UNKNOWN');
+    expect(r.reasons).not.toContain('PRIVATE_POOL_MISSING');
+  });
+
+  it('NO_MATCH when a required fact is a confirmed NO (private pool)', () => {
+    const pn = property({
+      location: { area: 'บางแสน' } as never,
+      capacity: { maxGuests: 15 } as never,
+      amenities: { privatePool: 'NO' } as never,
+    });
+    const r = matchProperty(pn, {
+      area: 'บางแสน',
+      accommodationType: null,
+      guests: 10,
+      bedrooms: null,
+      needsPrivatePool: true,
+      needsBeach: false,
+      needsRiver: false,
+    });
+    expect(r.decision).toBe('NO_MATCH');
+    expect(r.reasons).toContain('PRIVATE_POOL_MISSING');
+  });
 });
 
 describe('draft context — no fabrication', () => {

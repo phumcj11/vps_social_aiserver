@@ -1271,6 +1271,7 @@ export class InMemoryStore implements Store {
     };
     const propertyMatch = {
       MATCH: pms.filter((m) => m.decision === 'MATCH').length,
+      NEEDS_CONFIRMATION: pms.filter((m) => m.decision === 'NEEDS_CONFIRMATION').length,
       NO_MATCH: pms.filter((m) => m.decision === 'NO_MATCH').length,
     };
     const candidatesEvaluated = pms.reduce((sum, m) => sum + m.candidatesEvaluated, 0);

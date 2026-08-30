@@ -283,11 +283,18 @@ export class AiDraftCoordinator {
       ]);
 
     // SPRINT 016B — resolve the selected Property from the persisted Property match.
+    // v2 (M9C): ONLY a fully confirmed MATCH feeds a Property into the draft. A
+    // NEEDS_CONFIRMATION candidate has an unconfirmed required fact, so the draft
+    // stays business-level and safe (no property-specific/near-beach claims) —
+    // the candidate is still surfaced to the reviewer via the Property-match
+    // record. Property-specific draft wording for NEEDS_CONFIRMATION is M9E.
     let selectedProperty = null;
     if (propertyMatch?.decision === 'MATCH' && propertyMatch.propertyId) {
       selectedProperty = await this.deps.repo.getPropertyById(propertyMatch.propertyId);
     }
-    const noPropertyMatch = propertyMatch?.decision === 'NO_MATCH';
+    // Any evaluated Property stage that did not yield a confirmed MATCH → keep
+    // the draft business-level (covers NO_MATCH and NEEDS_CONFIRMATION).
+    const noPropertyMatch = propertyMatch != null && propertyMatch.decision !== 'MATCH';
 
     const creation = oppEvents.find(
       (e) => e.event === 'OpportunityCreated' || e.event === 'OpportunityRejected',

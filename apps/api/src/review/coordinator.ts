@@ -173,7 +173,12 @@ export class ReviewCoordinator {
     const codes = new Set(
       (draft?.policyResult?.reasons ?? []).map((r) => (r as { code: string }).code),
     );
-    if (propertyMatch?.decision === 'NO_MATCH' || codes.has('NO_PROPERTY_MATCH'))
+    // v2 (M9C): a NEEDS_CONFIRMATION candidate is NOT a no-property-match — there
+    // IS a best candidate, but a required fact is unconfirmed. Give the reviewer a
+    // distinct signal instead of the misleading NO_PROPERTY_MATCH.
+    if (propertyMatch?.decision === 'NEEDS_CONFIRMATION')
+      warnings.push('PROPERTY_NEEDS_CONFIRMATION');
+    else if (propertyMatch?.decision === 'NO_MATCH' || codes.has('NO_PROPERTY_MATCH'))
       warnings.push('NO_PROPERTY_MATCH');
     if (codes.has('MUSTNOTCLAIM_AVAILABILITY') || codes.has('GUARANTEED_AVAILABILITY'))
       warnings.push('AVAILABILITY_UNVERIFIED');

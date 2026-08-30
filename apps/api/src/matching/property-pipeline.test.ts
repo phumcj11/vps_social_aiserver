@@ -145,7 +145,7 @@ describe('Property match pipeline (SPRINT 016B)', () => {
     const [pm] = await coord.listPropertyMatches(ws, { decision: 'MATCH' });
     expect(pm?.propertyName).toBe('Villa B');
     expect(pm?.match.decision).toBe('MATCH');
-    expect(pm?.match.matcherVersion).toBe('property-rules-v1');
+    expect(pm?.match.matcherVersion).toBe('property-rules-v2');
   });
 
   it('persists the decision idempotently (re-run produces no duplicate)', async () => {

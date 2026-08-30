@@ -148,6 +148,27 @@ describe('property-aware draft context', () => {
     expect(ctx.property?.amenities).toContain('private pool');
   });
 
+  it('M9C safety: an UNKNOWN near-beach fact is NEVER stated as a confirmed amenity', () => {
+    // nearBeach + beachfront default to UNKNOWN; only a confirmed YES may appear.
+    const ctx = buildDraftContext(input(), cfg);
+    expect(ctx.property?.amenities).not.toContain('near beach');
+    expect(ctx.property?.amenities).not.toContain('beachfront');
+
+    // A confirmed YES DOES appear (proves the guard is on YES, not truthiness).
+    const nearBeachYes = property({
+      amenities: { ...emptyPropertyDefaults().amenities, privatePool: 'YES', nearBeach: 'YES' },
+    });
+    const ctx2 = buildDraftContext(input({ selectedProperty: nearBeachYes }), cfg);
+    expect(ctx2.property?.amenities).toContain('near beach');
+
+    // A confirmed NO also never appears.
+    const nearBeachNo = property({
+      amenities: { ...emptyPropertyDefaults().amenities, privatePool: 'YES', nearBeach: 'NO' },
+    });
+    const ctx3 = buildDraftContext(input({ selectedProperty: nearBeachNo }), cfg);
+    expect(ctx3.property?.amenities).not.toContain('near beach');
+  });
+
   it('resolves a Property policy override above the Business policy', () => {
     const p = property({
       policyOverrides: {
