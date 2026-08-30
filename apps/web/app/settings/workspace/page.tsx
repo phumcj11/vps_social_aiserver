@@ -48,7 +48,7 @@ export default function WorkspaceSettingsPage() {
     setError(null);
     setSuccess(null);
     if (name.trim().length === 0) {
-      setError('Workspace name is required.');
+      setError('กรุณากรอกชื่อพื้นที่ทำงาน');
       return;
     }
     setSaving(true);
@@ -58,24 +58,26 @@ export default function WorkspaceSettingsPage() {
         : await api.createWorkspace(name.trim());
       setWorkspace(result.workspace);
       setName(result.workspace.name);
-      setSuccess(workspace ? 'Workspace name updated.' : 'Workspace created.');
+      setSuccess(workspace ? 'บันทึกชื่อพื้นที่ทำงานแล้ว' : 'สร้างพื้นที่ทำงานแล้ว');
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : 'Something went wrong.');
+      setError(
+        err instanceof ApiRequestError ? err.message : 'เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง',
+      );
     } finally {
       setSaving(false);
     }
   }
 
-  if (loading) return <main>Loading…</main>;
+  if (loading) return <main style={{ padding: '1rem' }}>กำลังโหลด…</main>;
 
   return (
     <main style={{ maxWidth: 480 }}>
       <Nav email={user?.email} />
-      <h1>Workspace Settings</h1>
+      <h1>ตั้งค่าพื้นที่ทำงาน</h1>
 
       <form onSubmit={onSubmit}>
         <label style={{ display: 'block', marginBottom: '0.75rem' }}>
-          Workspace name
+          ชื่อพื้นที่ทำงาน
           <input
             type="text"
             value={name}
@@ -85,22 +87,11 @@ export default function WorkspaceSettingsPage() {
           />
         </label>
 
-        <label style={{ display: 'block', marginBottom: '0.75rem' }}>
-          Slug (read-only)
-          <input
-            type="text"
-            value={workspace?.slug ?? '(generated on creation)'}
-            readOnly
-            disabled
-            style={{ display: 'block', width: '100%', padding: '0.5rem', color: '#666' }}
-          />
-        </label>
-
         {error && <p style={{ color: '#b00020' }}>{error}</p>}
         {success && <p style={{ color: '#0a7d28' }}>{success}</p>}
 
         <button type="submit" disabled={saving}>
-          {saving ? 'Saving…' : workspace ? 'Save changes' : 'Create workspace'}
+          {saving ? 'กำลังบันทึก…' : workspace ? 'บันทึก' : 'สร้างพื้นที่ทำงาน'}
         </button>
       </form>
     </main>

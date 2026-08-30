@@ -9,6 +9,7 @@ import { hashPassword, verifyPassword } from '../lib/password';
 import { normaliseEmail, buildAuthSchemas } from './validation';
 import { issueSession, validateSession, revokeSession } from './session-service';
 import { setSessionCookie, clearSessionCookie } from '../lib/cookies';
+import { isOperator } from '../operations/guard';
 import {
   createAuthenticate,
   createCsrfGuard,
@@ -113,6 +114,11 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
   // GET /auth/me
   app.get('/auth/me', { preHandler: authenticate }, async (req, reply) => {
     noStore(reply);
-    return { user: publicUser(req.authUser!) };
+    // M10B: expose the operator flag so the customer web UI can hide operator-only
+    // navigation. Derived from the OPERATIONS_OPERATOR_EMAILS allowlist — the same
+    // gate that already 403-protects operator API routes; this only affects UI.
+    return {
+      user: { ...publicUser(req.authUser!), isOperator: isOperator(env, req.authUser!.email) },
+    };
   });
 }

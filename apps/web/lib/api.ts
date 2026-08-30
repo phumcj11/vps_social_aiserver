@@ -13,6 +13,8 @@ export interface User {
   email: string;
   status: string;
   createdAt: string;
+  /** M10B: true for KMKT operators (OPERATIONS_OPERATOR_EMAILS). Hides operator nav. */
+  isOperator?: boolean;
 }
 
 export interface Workspace {
@@ -1013,6 +1015,21 @@ export const api = {
     if (filter?.businessMatchId) q.set('businessMatchId', filter.businessMatchId);
     const qs = q.toString();
     return request<{ reviews: ReviewTask[] }>(`/reviews${qs ? `?${qs}` : ''}`, { method: 'GET' });
+  },
+  /**
+   * M10B: count of PENDING reviews the current owner may see. Reuses the existing
+   * tenant-scoped /reviews query (workspace-isolated server-side) — no new API,
+   * no migration. Returns 0 on any error (e.g. no workspace yet).
+   */
+  pendingReviewCount: async (): Promise<number> => {
+    try {
+      const res = await request<{ reviews: ReviewTask[] }>('/reviews?status=PENDING', {
+        method: 'GET',
+      });
+      return res.reviews.length;
+    } catch {
+      return 0;
+    }
   },
   getReview: (id: string) =>
     request<{

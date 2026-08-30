@@ -235,6 +235,29 @@ describe('review API', () => {
       (await app.inject({ method: 'GET', url: '/reviews', headers: cookieHeader(tokenB) })).json()
         .reviews,
     ).toEqual([]);
+    // M10B — the pending-count query is the same tenant-scoped list; workspace B
+    // sees 0 pending, workspace A sees its own. Unauthenticated → 401.
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/reviews?status=PENDING',
+          headers: cookieHeader(tokenB),
+        })
+      ).json().reviews,
+    ).toEqual([]);
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/reviews?status=PENDING',
+          headers: cookieHeader(a.token),
+        })
+      ).json().reviews,
+    ).toHaveLength(1);
+    expect((await app.inject({ method: 'GET', url: '/reviews?status=PENDING' })).statusCode).toBe(
+      401,
+    );
     await app.close();
   });
 });

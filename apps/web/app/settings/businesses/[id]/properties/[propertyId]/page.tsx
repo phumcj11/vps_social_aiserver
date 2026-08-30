@@ -375,6 +375,23 @@ export default function PropertyEditPage() {
       {tab === 'สิ่งอำนวยความสะดวก' && (
         <Section>
           <Guidance text={PROPERTY_TAB_GUIDANCE['สิ่งอำนวยความสะดวก']} />
+          {/* M10B — lightweight completeness nudge (no validation change; UNKNOWN
+              remains valid and is never inferred to YES/NO). */}
+          <p
+            style={{
+              margin: '0 0 0.75rem',
+              padding: '0.6rem 0.75rem',
+              background: '#f3faf4',
+              border: '1px solid #cfe8d4',
+              borderRadius: 8,
+              fontSize: '0.9rem',
+              color: '#0a5a20',
+            }}
+          >
+            💡 การระบุข้อมูล <strong>สระส่วนตัว</strong> และ <strong>ใกล้ทะเล/ติดทะเล</strong>{' '}
+            ให้ครบ จะช่วยให้ระบบแนะนำที่พักได้แม่นยำขึ้น และลดรายการที่ต้องตรวจสอบเพิ่มเติม —
+            หากยังไม่แน่ใจ เลือก “ยังไม่ได้ระบุ” ไว้ก่อนได้
+          </p>
           {/* Tri-state facts (M9B): มี / ไม่มี / ยังไม่ได้ระบุ. UNKNOWN is the
               honest default — the matcher must not read an unset fact as "ไม่มี". */}
           <div style={{ marginBottom: '1rem', display: 'grid', gap: '0.6rem' }}>

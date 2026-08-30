@@ -92,12 +92,12 @@ export default function BusinessesPage() {
 
   const FILTERS: Array<[Filter, string]> = [
     ['all', 'ทั้งหมด'],
-    ['production', 'Production'],
-    ['test', 'Test'],
-    ['ready', 'READY'],
-    ['not_ready', 'NOT_READY'],
-    ['active', 'Active'],
-    ['archived', 'Archived'],
+    ['production', 'ใช้งานจริง'],
+    ['test', 'ทดสอบ'],
+    ['ready', 'พร้อมใช้งาน'],
+    ['not_ready', 'ยังไม่พร้อม'],
+    ['active', 'ใช้งานอยู่'],
+    ['archived', 'เก็บถาวร'],
   ];
 
   return (
@@ -173,13 +173,13 @@ export default function BusinessesPage() {
                 <div>
                   <strong style={{ fontSize: '1.05rem' }}>{r.business.name}</strong>{' '}
                   <Badge
-                    text={r.environment === 'production' ? 'Production' : 'Test'}
+                    text={r.environment === 'production' ? 'ใช้งานจริง' : 'ทดสอบ'}
                     tone={r.environment === 'production' ? 'ok' : 'muted'}
                   />{' '}
-                  {r.business.status === 'archived' ? <Badge text="Archived" tone="warn" /> : null}
+                  {r.business.status === 'archived' ? <Badge text="เก็บถาวร" tone="warn" /> : null}
                 </div>
                 <Badge
-                  text={r.ready ? 'READY' : `NOT_READY (${r.missingCount})`}
+                  text={r.ready ? 'พร้อมใช้งาน' : `ยังไม่พร้อม (${r.missingCount})`}
                   tone={r.ready ? 'ok' : 'danger'}
                 />
               </div>

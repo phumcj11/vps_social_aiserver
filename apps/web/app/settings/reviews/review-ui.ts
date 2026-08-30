@@ -40,10 +40,49 @@ export const REVIEW_SECTION_ORDER: Array<keyof typeof REVIEW_SECTIONS> = [
   'advanced',
 ];
 
+// ── Review Queue (M10B — owner daily operation) ──────────────────────────────
+export const REVIEW_QUEUE_PAGE_TITLE = 'รายการรอตรวจสอบ';
+export const REVIEW_QUEUE_SUBTITLE = 'ตรวจสอบข้อความที่ระบบเตรียมไว้ก่อนนำไปตอบลูกค้า';
+export const REVIEW_QUEUE_CTA = 'ตรวจสอบ';
+
+/** Queue filter tabs — owner-facing Thai, mapped to the API status (undefined = all). */
+export const REVIEW_QUEUE_TABS: Array<{ status: string | undefined; label: string }> = [
+  { status: 'PENDING', label: 'รอตรวจสอบ' },
+  { status: 'APPROVED', label: 'อนุมัติแล้ว' },
+  { status: 'REJECTED', label: 'ไม่อนุมัติ' },
+  { status: undefined, label: 'ทั้งหมด' },
+];
+
+/** Owner-facing empty-state copy per filter (never references AI Drafts/operator tools). */
+export function reviewQueueEmptyThai(status: string | undefined): { title: string; hint: string } {
+  if (status === 'APPROVED')
+    return { title: 'ยังไม่มีรายการที่อนุมัติแล้ว', hint: 'รายการที่คุณอนุมัติแล้วจะแสดงที่นี่' };
+  if (status === 'REJECTED')
+    return { title: 'ยังไม่มีรายการที่ไม่อนุมัติ', hint: 'รายการที่คุณไม่อนุมัติจะแสดงที่นี่' };
+  return {
+    title: 'ยังไม่มีรายการที่รอตรวจสอบ',
+    hint: 'เมื่อระบบพบลูกค้า (Lead) ที่เกี่ยวข้อง รายการจะปรากฏที่นี่เพื่อให้คุณตรวจสอบก่อนตอบลูกค้า',
+  };
+}
+
 export const REVIEW_SAVE_LABEL = 'บันทึกข้อความ';
 export const REVIEW_SAVE_OK = 'บันทึกข้อความเรียบร้อย';
 export const REVIEW_SAVE_ERROR = 'ไม่สามารถบันทึกข้อความได้ กรุณาลองใหม่อีกครั้ง';
 export const REVIEW_APPROVE_LABEL = 'อนุมัติข้อความ';
+// M10B — manual-response workflow (Facebook WRITE stays OFF; owner replies by hand).
+export const REVIEW_OPEN_FB_POST_LABEL = 'เปิดโพสต์ลูกค้าบน Facebook';
+export const REVIEW_OPEN_FB_POST_HINT =
+  'หลังตรวจสอบข้อความแล้ว คุณสามารถเปิดโพสต์ต้นฉบับและนำข้อความไปตอบลูกค้าได้';
+export const REVIEW_COPY_LABEL = 'คัดลอกข้อความ';
+export const REVIEW_COPY_OK = 'คัดลอกข้อความแล้ว';
+export const REVIEW_WORKFLOW_TITLE = 'ขั้นตอนการตอบลูกค้า';
+export const REVIEW_WORKFLOW_STEPS: string[] = [
+  'ตรวจสอบความต้องการของลูกค้า',
+  'ตรวจสอบที่พักที่ระบบแนะนำ',
+  'แก้ไขข้อความหากต้องการ',
+  'อนุมัติข้อความ',
+  'เปิดโพสต์ Facebook และตอบลูกค้าด้วยตนเอง',
+];
 export const REVIEW_REJECT_LABEL = 'ไม่อนุมัติ';
 export const REVIEW_DECISION_REMINDER = 'การอนุมัติในขั้นตอนนี้ยังไม่โพสต์หรือคอมเมนต์บน Facebook';
 export const TEST_DATA_BADGE = 'ข้อมูลทดสอบ';

@@ -48,6 +48,11 @@ import {
   needsConfirmationSummaryLines,
   ownerGuidanceThai,
   type CandidateReasonLine,
+  REVIEW_OPEN_FB_POST_LABEL,
+  REVIEW_OPEN_FB_POST_HINT,
+  REVIEW_COPY_LABEL,
+  REVIEW_COPY_OK,
+  REVIEW_WORKFLOW_STEPS,
 } from '../review-ui';
 
 interface DraftView {
@@ -165,6 +170,7 @@ export default function ReviewDetailPage() {
   const [busy, setBusy] = useState(false);
   const [editText, setEditText] = useState('');
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [copyMsg, setCopyMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
@@ -247,6 +253,21 @@ export default function ReviewDetailPage() {
       setError(err instanceof ApiRequestError ? err.message : 'ไม่สามารถดำเนินการได้');
     } finally {
       setBusy(false);
+    }
+  }
+
+  /**
+   * Copy the current message to the clipboard for a manual Facebook reply.
+   * Browser-side only — NO backend call, NO Facebook write, NO publish.
+   */
+  async function copyText() {
+    const text = (review?.editedContent ?? editText ?? draft?.content ?? '').toString();
+    if (!text.trim()) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyMsg(`✓ ${REVIEW_COPY_OK}`);
+    } catch {
+      setCopyMsg(REVIEW_COPY_OK); // clipboard may be blocked; still acknowledge
     }
   }
 
@@ -681,7 +702,15 @@ export default function ReviewDetailPage() {
                 fontSize: '1rem',
               }}
             />
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
+            <div
+              style={{
+                display: 'flex',
+                gap: 8,
+                alignItems: 'center',
+                marginTop: 6,
+                flexWrap: 'wrap',
+              }}
+            >
               <button
                 type="button"
                 disabled={busy || editText.trim().length === 0}
@@ -689,9 +718,13 @@ export default function ReviewDetailPage() {
               >
                 {REVIEW_SAVE_LABEL}
               </button>
+              <button type="button" disabled={editText.trim().length === 0} onClick={copyText}>
+                📋 {REVIEW_COPY_LABEL}
+              </button>
               {saveMsg && (
                 <span style={{ color: saveMsg.startsWith('✓') ? C.ok : C.danger }}>{saveMsg}</span>
               )}
+              {copyMsg && <span style={{ color: C.ok }}>{copyMsg}</span>}
             </div>
           </>
         ) : (
@@ -699,6 +732,12 @@ export default function ReviewDetailPage() {
             <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
               {review.editedContent ?? draft?.content ?? '(ไม่มีข้อความ)'}
             </p>
+            <div style={{ marginTop: 8 }}>
+              <button type="button" onClick={copyText}>
+                📋 {REVIEW_COPY_LABEL}
+              </button>
+              {copyMsg && <span style={{ color: C.ok, marginLeft: 8 }}>{copyMsg}</span>}
+            </div>
           </Card>
         )}
       </Section>
@@ -750,6 +789,54 @@ export default function ReviewDetailPage() {
             {review.decidedBy ? ` · โดย ${review.decidedBy}` : ''}
           </p>
         )}
+      </Section>
+
+      {/* 11b. Reply to the customer on Facebook (manual — write stays OFF) */}
+      <Section title="ตอบลูกค้าบน Facebook">
+        <Card tone="plain">
+          <ol
+            style={{
+              margin: '0 0 0.75rem',
+              paddingLeft: '1.3rem',
+              color: C.muted,
+              fontSize: '0.9rem',
+            }}
+          >
+            {REVIEW_WORKFLOW_STEPS.map((s) => (
+              <li key={s} style={{ marginBottom: 2 }}>
+                {s}
+              </li>
+            ))}
+          </ol>
+          {presentation?.links.facebookPostUrl ? (
+            <>
+              <a
+                href={presentation.links.facebookPostUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'inline-block',
+                  background: '#1877f2',
+                  color: '#fff',
+                  borderRadius: 6,
+                  padding: '0.55rem 1.1rem',
+                  fontSize: '1rem',
+                  fontWeight: 700,
+                  textDecoration: 'none',
+                }}
+              >
+                🔗 {REVIEW_OPEN_FB_POST_LABEL}
+              </a>
+              <p style={{ margin: '0.5rem 0 0', fontSize: '0.85rem', color: C.muted }}>
+                {REVIEW_OPEN_FB_POST_HINT}
+              </p>
+            </>
+          ) : (
+            <p style={{ margin: 0, fontSize: '0.9rem', color: C.muted }}>
+              ยังไม่มีลิงก์โพสต์ต้นฉบับสำหรับรายการนี้
+            </p>
+          )}
+        </Card>
       </Section>
 
       {/* 12. History */}

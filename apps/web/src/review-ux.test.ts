@@ -26,6 +26,16 @@ import {
   REVIEW_APPROVE_SEMANTIC_NOTE,
   needsConfirmationSummaryLines,
   ownerGuidanceThai,
+  REVIEW_QUEUE_PAGE_TITLE,
+  REVIEW_QUEUE_SUBTITLE,
+  REVIEW_QUEUE_CTA,
+  REVIEW_QUEUE_TABS,
+  reviewQueueEmptyThai,
+  REVIEW_OPEN_FB_POST_LABEL,
+  REVIEW_OPEN_FB_POST_HINT,
+  REVIEW_COPY_LABEL,
+  REVIEW_COPY_OK,
+  REVIEW_WORKFLOW_STEPS,
 } from '../app/settings/reviews/review-ui';
 import { mediaReasonThai } from '../app/settings/businesses/media-ui';
 
@@ -319,5 +329,55 @@ describe('historical v1 compatibility (M9D)', () => {
     expect(lines.find((l) => l!.text.includes('ใกล้ทะเล'))!.mark).toBe('✗');
     // No *_UNKNOWN in the blob → no △ invented.
     expect(lines.some((l) => l!.mark === '△')).toBe(false);
+  });
+});
+
+// ── Owner daily-operation UX (M10B) ──────────────────────────────────────────
+describe('Thai review queue (M10B)', () => {
+  it('queue title/subtitle/CTA are owner-facing Thai (no English/enums)', () => {
+    expect(REVIEW_QUEUE_PAGE_TITLE).toBe('รายการรอตรวจสอบ');
+    expect(REVIEW_QUEUE_SUBTITLE).toContain('ตรวจสอบข้อความ');
+    expect(REVIEW_QUEUE_CTA).toBe('ตรวจสอบ');
+    for (const s of [REVIEW_QUEUE_PAGE_TITLE, REVIEW_QUEUE_SUBTITLE, REVIEW_QUEUE_CTA]) {
+      expect(s).not.toMatch(/Review Queue|PENDING|APPROVED|AI Draft/i);
+    }
+  });
+
+  it('filter tabs map Thai labels to API statuses (PENDING/APPROVED/REJECTED/all)', () => {
+    const byLabel = Object.fromEntries(REVIEW_QUEUE_TABS.map((t) => [t.label, t.status]));
+    expect(byLabel['รอตรวจสอบ']).toBe('PENDING');
+    expect(byLabel['อนุมัติแล้ว']).toBe('APPROVED');
+    expect(byLabel['ไม่อนุมัติ']).toBe('REJECTED');
+    expect(byLabel['ทั้งหมด']).toBeUndefined(); // all
+    expect(reviewStatusThai('PENDING')).toBe('รอตรวจสอบ');
+  });
+
+  it('empty states are Thai and never mention AI Drafts / operator tooling', () => {
+    const pending = reviewQueueEmptyThai('PENDING');
+    const approved = reviewQueueEmptyThai('APPROVED');
+    const rejected = reviewQueueEmptyThai('REJECTED');
+    expect(pending.title).toBe('ยังไม่มีรายการที่รอตรวจสอบ');
+    expect(approved.title).toBe('ยังไม่มีรายการที่อนุมัติแล้ว');
+    expect(rejected.title).toBe('ยังไม่มีรายการที่ไม่อนุมัติ');
+    for (const s of [pending.title, pending.hint, approved.title, rejected.title]) {
+      expect(s).not.toMatch(/AI Draft|Enqueue|operator/i);
+    }
+  });
+});
+
+describe('manual Facebook reply workflow (M10B)', () => {
+  it('exposes a Thai open-Facebook-post CTA + hint', () => {
+    expect(REVIEW_OPEN_FB_POST_LABEL).toBe('เปิดโพสต์ลูกค้าบน Facebook');
+    expect(REVIEW_OPEN_FB_POST_HINT).toContain('เปิดโพสต์ต้นฉบับ');
+  });
+  it('exposes a Thai copy-message action', () => {
+    expect(REVIEW_COPY_LABEL).toBe('คัดลอกข้อความ');
+    expect(REVIEW_COPY_OK).toBe('คัดลอกข้อความแล้ว');
+  });
+  it('workflow steps end with the manual Facebook reply and never claim auto-posting', () => {
+    expect(REVIEW_WORKFLOW_STEPS.length).toBeGreaterThanOrEqual(5);
+    expect(REVIEW_WORKFLOW_STEPS[3]).toBe('อนุมัติข้อความ');
+    expect(REVIEW_WORKFLOW_STEPS.at(-1)).toContain('ตอบลูกค้าด้วยตนเอง');
+    expect(REVIEW_WORKFLOW_STEPS.join(' ')).not.toMatch(/โพสต์อัตโนมัติ|auto/i);
   });
 });

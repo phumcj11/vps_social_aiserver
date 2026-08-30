@@ -115,4 +115,32 @@ describe('authentication', () => {
     expect(res.json().ok).toBe(true);
     await app.close();
   });
+
+  // M10B — /auth/me exposes the operator flag so the web hides operator nav.
+  it('me() returns isOperator=false for a normal owner', async () => {
+    const { app } = await makeTestApp();
+    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: good });
+    const me = await app.inject({
+      method: 'GET',
+      url: '/auth/me',
+      headers: cookieHeader(sessionCookie(reg)!),
+    });
+    expect(me.statusCode).toBe(200);
+    expect(me.json().user.isOperator).toBe(false);
+    await app.close();
+  });
+
+  it('me() returns isOperator=true when the email is in OPERATIONS_OPERATOR_EMAILS', async () => {
+    const { app } = await makeTestApp({
+      envOverrides: { OPERATIONS_OPERATOR_EMAILS: 'owner@example.com,other@kmkt.co' },
+    });
+    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: good });
+    const me = await app.inject({
+      method: 'GET',
+      url: '/auth/me',
+      headers: cookieHeader(sessionCookie(reg)!),
+    });
+    expect(me.json().user.isOperator).toBe(true);
+    await app.close();
+  });
 });

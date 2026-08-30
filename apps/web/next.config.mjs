@@ -9,7 +9,15 @@
  */
 const nextConfig = {
   reactStrictMode: true,
-  // No product features, rewrites, or external integrations in this sprint.
+  // M10B — retire the legacy English business UI from the customer surface.
+  // Server-level redirect (defense-in-depth alongside the page-level redirects);
+  // kept in sync with apps/web/lib/legacy-redirects.ts (verified by test).
+  async redirects() {
+    return [
+      { source: '/businesses', destination: '/settings/businesses', permanent: false },
+      { source: '/businesses/:id', destination: '/settings/businesses/:id', permanent: false },
+    ];
+  },
 };
 
 export default nextConfig;

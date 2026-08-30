@@ -21,9 +21,9 @@ export default function LoginPage() {
     } catch (err) {
       // Always show a generic message — never reveal which field was wrong.
       if (err instanceof ApiRequestError) {
-        setError('Invalid email or password.');
+        setError('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
       } else {
-        setError('Sign in failed. Please try again.');
+        setError('เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
       }
     } finally {
       setLoading(false);
@@ -31,38 +31,38 @@ export default function LoginPage() {
   }
 
   return (
-    <main style={{ maxWidth: 420 }}>
-      <h1>Sign in</h1>
+    <main style={{ maxWidth: 420, margin: '0 auto', padding: '0 0.75rem' }}>
+      <h1>เข้าสู่ระบบ</h1>
       <form onSubmit={onSubmit}>
         <label style={{ display: 'block', marginBottom: '0.75rem' }}>
-          Email
+          อีเมล
           <input
             type="email"
             value={email}
             required
             autoComplete="email"
             onChange={(e) => setEmail(e.target.value)}
-            style={{ display: 'block', width: '100%', padding: '0.5rem' }}
+            style={{ display: 'block', width: '100%', padding: '0.5rem', boxSizing: 'border-box' }}
           />
         </label>
         <label style={{ display: 'block', marginBottom: '0.75rem' }}>
-          Password
+          รหัสผ่าน
           <input
             type="password"
             value={password}
             required
             autoComplete="current-password"
             onChange={(e) => setPassword(e.target.value)}
-            style={{ display: 'block', width: '100%', padding: '0.5rem' }}
+            style={{ display: 'block', width: '100%', padding: '0.5rem', boxSizing: 'border-box' }}
           />
         </label>
         {error && <p style={{ color: '#b00020' }}>{error}</p>}
         <button type="submit" disabled={loading}>
-          {loading ? 'Signing in…' : 'Sign in'}
+          {loading ? 'กำลังเข้าสู่ระบบ…' : 'เข้าสู่ระบบ'}
         </button>
       </form>
       <p style={{ marginTop: '1rem' }}>
-        Need an account? <a href="/register">Create one</a>
+        ยังไม่มีบัญชี? <a href="/register">สร้างบัญชี</a>
       </p>
     </main>
   );
