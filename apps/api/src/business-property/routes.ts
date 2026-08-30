@@ -13,6 +13,7 @@ import { DEFAULT_IMAGE_RESPONSE_MODE } from '../media/types';
 import { evaluateBusinessReadiness, evaluatePropertyReadiness } from './readiness';
 import { resolvePropertyPolicies } from './policies';
 import { isValidContactValue, publicContactChannel } from './contacts';
+import { TRISTATE_AMENITY_KEYS, coercePropertyFact } from './property-facts';
 
 export interface BusinessPropertyDeps {
   store: Store;
@@ -77,7 +78,13 @@ const updatePropertySchema = z.object({
       extraGuestPolicy: z.string().max(400).nullable().optional(),
     })
     .optional(),
-  amenities: z.record(z.union([z.boolean(), z.array(z.string())])).optional(),
+  // Amenity values: boolean fields, the `other` string[], or a tri-state fact
+  // for private_pool/near_beach/beachfront/riverfront. Legacy clients may still
+  // send booleans; the handler coerces the four tri-state keys explicitly
+  // (true→YES, false→UNKNOWN — never NO) via normalizeAmenitiesPatch below.
+  amenities: z
+    .record(z.union([z.boolean(), z.enum(['YES', 'NO', 'UNKNOWN']), z.array(z.string())]))
+    .optional(),
   pricing: z
     .object({
       startingPrice: z.number().nonnegative().nullable().optional(),
@@ -132,6 +139,33 @@ const policiesSchema = z.object({
     .enum(['OFF', 'MATCHED_PROPERTY_ONLY', 'BUSINESS_FALLBACK', 'HUMAN_REVIEW_ONLY'])
     .optional(),
 });
+
+/**
+ * Normalize an incoming amenities patch: the four tri-state keys are coerced to
+ * an explicit PropertyFact ('YES'|'NO'|'UNKNOWN'), accepting the enum directly
+ * and mapping legacy booleans deterministically (true→YES, false→UNKNOWN —
+ * never NO). Non-tri-state fields (other booleans, `other`) pass through
+ * untouched. Missing fields are NEVER invented — only keys the client actually
+ * sent are normalized. An unrecognizable tri-state value is a validation error.
+ */
+function normalizeAmenitiesPatch(
+  amenities: Record<string, boolean | string | string[]> | undefined,
+): Record<string, unknown> | undefined {
+  if (!amenities) return undefined;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(amenities)) {
+    if ((TRISTATE_AMENITY_KEYS as readonly string[]).includes(key)) {
+      const fact = coercePropertyFact(value);
+      if (fact === undefined) {
+        throw errors.validation(`Invalid value for ${key} (expected YES, NO, or UNKNOWN)`);
+      }
+      out[key] = fact;
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
+}
 
 function publicProperty(p: Property) {
   return {
@@ -399,7 +433,13 @@ export function registerBusinessPropertyRoutes(
       if (parsed.data.code && (await bpStore.isPropertyCodeTaken(id, parsed.data.code, pid))) {
         throw errors.conflict('property_code_taken', 'A property with this code already exists');
       }
-      const updated = await bpStore.updateProperty(pid, parsed.data as never);
+      // Coerce the four tri-state amenity facts (accepts enum or legacy boolean)
+      // before the loosely-typed amenities record reaches the store.
+      const patch = {
+        ...parsed.data,
+        amenities: normalizeAmenitiesPatch(parsed.data.amenities),
+      };
+      const updated = await bpStore.updateProperty(pid, patch as never);
       await audit(p.workspaceId, 'PropertyUpdated', req.authUser!.email, {
         businessId: id,
         propertyId: pid,

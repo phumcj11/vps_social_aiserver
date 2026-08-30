@@ -115,7 +115,7 @@ describe('Property pipeline end-to-end (synthetic)', () => {
       await bp.updateProperty(p.id, {
         location: { area },
         capacity: { maxGuests },
-        amenities: { privatePool: true, karaoke },
+        amenities: { privatePool: 'YES', karaoke },
       });
       return p;
     }

@@ -21,6 +21,7 @@ import type {
   EntityStatus,
 } from './types';
 import { DEFAULT_NO_PROPERTY_MATCH_STRATEGY } from './types';
+import { factFromColumn, factToColumn } from './property-facts';
 import { DEFAULT_IMAGE_RESPONSE_MODE } from '../media/types';
 import {
   type BusinessPropertyStore,
@@ -444,10 +445,13 @@ function toPropertyRow(p: Property): typeof propertiesTable.$inferInsert {
     bedrooms: p.capacity.bedrooms,
     bathrooms: p.capacity.bathrooms,
     beds: p.capacity.beds,
-    privatePool: p.amenities.privatePool,
-    nearBeach: p.amenities.nearBeach,
-    beachfront: p.amenities.beachfront,
-    riverfront: p.amenities.riverfront,
+    // Tri-state facts: the top-level columns are the authoritative store for the
+    // four facts (NULL = UNKNOWN); the same values also live in `details`
+    // (JSON) as the enum for forward consistency.
+    privatePool: factToColumn(p.amenities.privatePool),
+    nearBeach: factToColumn(p.amenities.nearBeach),
+    beachfront: factToColumn(p.amenities.beachfront),
+    riverfront: factToColumn(p.amenities.riverfront),
     details: JSON.stringify(details),
   };
 }
@@ -480,7 +484,17 @@ function fromPropertyRow(row: PropertyRow): Property {
       maxGuests: row.maxGuests,
       extraGuestPolicy: d.extraGuestPolicy ?? null,
     },
-    amenities: d.amenities ?? defaults.amenities,
+    // Amenities: non-tri-state fields come from the JSON blob; the four
+    // tri-state facts are read from the authoritative top-level columns (via the
+    // codec), so a legacy false column → UNKNOWN and any stale boolean inside the
+    // JSON blob is overridden. This is what makes the migration column-only.
+    amenities: {
+      ...(d.amenities ?? defaults.amenities),
+      privatePool: factFromColumn(row.privatePool),
+      nearBeach: factFromColumn(row.nearBeach),
+      beachfront: factFromColumn(row.beachfront),
+      riverfront: factFromColumn(row.riverfront),
+    },
     pricing: d.pricing ?? defaults.pricing,
     content: d.content ?? defaults.content,
     media: d.media ?? defaults.media,

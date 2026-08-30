@@ -97,9 +97,10 @@ export function formatBaht(n: number | null | undefined): string {
 // Amenities — common owner options mapped onto canonical PropertyAmenities keys.
 // ---------------------------------------------------------------------------
 
-/** Canonical boolean amenity keys the matcher/persistence understand. */
+/** Canonical BOOLEAN amenity keys the matcher/persistence understand. The
+ * tri-state facts (private pool, near beach, beachfront, riverfront) are NOT
+ * here — they are three-valued and edited with a separate radio control. */
 export type AmenityKey =
-  | 'privatePool'
   | 'karaoke'
   | 'poolTable'
   | 'wifi'
@@ -107,17 +108,15 @@ export type AmenityKey =
   | 'kitchen'
   | 'bbq'
   | 'parking'
-  | 'petFriendly'
-  | 'nearBeach';
+  | 'petFriendly';
 
 export interface AmenityOption {
   key: AmenityKey;
   label: string;
 }
 
-/** Common options shown as chips, in owner-priority order. */
+/** Boolean amenity checkboxes, in owner-priority order. */
 export const AMENITY_OPTIONS: AmenityOption[] = [
-  { key: 'privatePool', label: 'สระว่ายน้ำส่วนตัว' },
   { key: 'karaoke', label: 'คาราโอเกะ' },
   { key: 'poolTable', label: 'โต๊ะพูล' },
   { key: 'wifi', label: 'Wi-Fi' },
@@ -126,10 +125,48 @@ export const AMENITY_OPTIONS: AmenityOption[] = [
   { key: 'bbq', label: 'เตาปิ้งย่าง' },
   { key: 'parking', label: 'ที่จอดรถ' },
   { key: 'petFriendly', label: 'สัตว์เลี้ยงเข้าได้' },
-  { key: 'nearBeach', label: 'ใกล้ทะเล' },
 ];
 
-/** Owner-facing label for a canonical amenity key (list cards, summaries). */
+// ── Tri-state facts (M9B) ────────────────────────────────────────────────────
+// YES / NO / UNKNOWN, edited as three radio choices. UNKNOWN is shown to the
+// owner as the plain-Thai "ยังไม่ได้ระบุ", never an internal token.
+
+export type PropertyFactValue = 'YES' | 'NO' | 'UNKNOWN';
+
+export interface TristateFactOption {
+  key: 'privatePool' | 'nearBeach' | 'beachfront' | 'riverfront';
+  label: string;
+  /** Owner-facing wording for the YES / NO choices (varies per fact). */
+  yesLabel: string;
+  noLabel: string;
+}
+
+export const FACT_UNKNOWN_LABEL = 'ยังไม่ได้ระบุ';
+
+export const TRISTATE_FACT_OPTIONS: TristateFactOption[] = [
+  { key: 'privatePool', label: 'สระส่วนตัว', yesLabel: 'มี', noLabel: 'ไม่มี' },
+  { key: 'nearBeach', label: 'ใกล้ทะเล', yesLabel: 'ใช่', noLabel: 'ไม่ใช่' },
+  { key: 'beachfront', label: 'ติดทะเล', yesLabel: 'ใช่', noLabel: 'ไม่ใช่' },
+  { key: 'riverfront', label: 'ติดแม่น้ำ', yesLabel: 'ใช่', noLabel: 'ไม่ใช่' },
+];
+
+/**
+ * Read a tri-state fact off a loosely-typed amenities record, tolerating legacy
+ * booleans that an older cached payload might still carry (true→YES,
+ * false→UNKNOWN — never NO, matching the server's migration rule). A missing
+ * value is UNKNOWN.
+ */
+export function readPropertyFact(
+  amenities: Record<string, unknown>,
+  key: TristateFactOption['key'],
+): PropertyFactValue {
+  const v = amenities[key];
+  if (v === 'YES' || v === 'NO' || v === 'UNKNOWN') return v;
+  if (v === true) return 'YES';
+  return 'UNKNOWN';
+}
+
+/** Owner-facing label for a canonical boolean amenity key (list cards). */
 export const AMENITY_LABELS: Record<AmenityKey, string> = AMENITY_OPTIONS.reduce(
   (acc, o) => {
     acc[o.key] = o.label;
@@ -138,8 +175,16 @@ export const AMENITY_LABELS: Record<AmenityKey, string> = AMENITY_OPTIONS.reduce
   {} as Record<AmenityKey, string>,
 );
 
+/** Labels for the featured chips (includes tri-state facts). */
+const FEATURED_CHIP_LABELS: Record<string, string> = {
+  privatePool: 'สระว่ายน้ำส่วนตัว',
+  karaoke: 'คาราโอเกะ',
+  poolTable: 'โต๊ะพูล',
+  nearBeach: 'ใกล้ทะเล',
+};
+
 /** Read the custom "other" amenities list off a Property amenities record. */
-export function otherAmenities(amenities: Record<string, boolean | string[]>): string[] {
+export function otherAmenities(amenities: Record<string, unknown>): string[] {
   const other = amenities.other;
   return Array.isArray(other)
     ? other.filter((s) => typeof s === 'string' && s.trim().length > 0)
@@ -233,12 +278,21 @@ export interface PropertySummary {
 }
 
 /** Amenity chip labels a property card should show (canonical → Thai). */
-export function amenityChips(amenities: Record<string, boolean | string[]>): string[] {
+export function amenityChips(amenities: Record<string, unknown>): string[] {
   const chips: string[] = [];
   // A curated, high-signal subset in priority order (not every toggle).
-  const featured: AmenityKey[] = ['privatePool', 'karaoke', 'poolTable', 'nearBeach'];
-  for (const key of featured) {
-    if (amenities[key] === true) chips.push(AMENITY_LABELS[key]);
+  // privatePool/nearBeach are tri-state: a chip appears only for a confirmed
+  // present feature ('YES', or a legacy boolean true) — never for NO/UNKNOWN.
+  const featured: Array<{ key: string; tri: boolean }> = [
+    { key: 'privatePool', tri: true },
+    { key: 'karaoke', tri: false },
+    { key: 'poolTable', tri: false },
+    { key: 'nearBeach', tri: true },
+  ];
+  for (const { key, tri } of featured) {
+    const v = amenities[key];
+    const present = tri ? v === 'YES' || v === true : v === true;
+    if (present) chips.push(FEATURED_CHIP_LABELS[key] ?? key);
   }
   return chips;
 }

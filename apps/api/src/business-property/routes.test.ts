@@ -67,7 +67,8 @@ describe('property CRUD + ownership', () => {
     });
     expect(upd.statusCode).toBe(200);
     expect(upd.json().property.capacity.maxGuests).toBe(12);
-    expect(upd.json().property.amenities.privatePool).toBe(true);
+    // M9B legacy-boolean compatibility: a client sending `true` gets 'YES' back.
+    expect(upd.json().property.amenities.privatePool).toBe('YES');
 
     const arch = await app.inject({
       method: 'POST',
@@ -75,6 +76,50 @@ describe('property CRUD + ownership', () => {
       ...h(token),
     });
     expect(arch.json().property.status).toBe('archived');
+    await app.close();
+  });
+
+  it('persists tri-state amenity facts (YES / NO / UNKNOWN) via the API', async () => {
+    const { app } = await makeTestApp();
+    const { token, businessId } = await withBusiness(app, 'tri@example.com');
+    const create = await app.inject({
+      method: 'POST',
+      url: `/businesses/${businessId}/properties`,
+      ...h(token, { name: 'Tri Villa' }),
+    });
+    const pid = create.json().property.id;
+    // A brand-new property reports UNKNOWN for every tri-state fact.
+    expect(create.json().property.amenities.privatePool).toBe('UNKNOWN');
+    expect(create.json().property.amenities.nearBeach).toBe('UNKNOWN');
+
+    // Explicit enum writes persist each of the three states.
+    const upd = await app.inject({
+      method: 'PATCH',
+      url: `/businesses/${businessId}/properties/${pid}`,
+      ...h(token, { amenities: { privatePool: 'YES', nearBeach: 'NO', beachfront: 'UNKNOWN' } }),
+    });
+    expect(upd.statusCode).toBe(200);
+    expect(upd.json().property.amenities.privatePool).toBe('YES');
+    expect(upd.json().property.amenities.nearBeach).toBe('NO');
+    expect(upd.json().property.amenities.beachfront).toBe('UNKNOWN');
+
+    // Legacy booleans coerce deterministically: true→YES, false→UNKNOWN (never NO).
+    const legacy = await app.inject({
+      method: 'PATCH',
+      url: `/businesses/${businessId}/properties/${pid}`,
+      ...h(token, { amenities: { privatePool: false, riverfront: true } }),
+    });
+    expect(legacy.statusCode).toBe(200);
+    expect(legacy.json().property.amenities.privatePool).toBe('UNKNOWN');
+    expect(legacy.json().property.amenities.riverfront).toBe('YES');
+
+    // A confirmed NO is preserved on reload, distinct from UNKNOWN.
+    const get = await app.inject({
+      method: 'GET',
+      url: `/businesses/${businessId}/properties/${pid}`,
+      headers: cookieHeader(token),
+    });
+    expect(get.json().property.amenities.nearBeach).toBe('NO');
     await app.close();
   });
 

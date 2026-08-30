@@ -122,11 +122,13 @@ export interface BusinessPropertyStore {
 
 export function emptyAmenities(): Property['amenities'] {
   return {
-    privatePool: false,
+    // Tri-state facts default to UNKNOWN — a brand-new property has told us
+    // nothing yet; never assume a confirmed absence.
+    privatePool: 'UNKNOWN',
+    beachfront: 'UNKNOWN',
+    nearBeach: 'UNKNOWN',
+    riverfront: 'UNKNOWN',
     sharedPool: false,
-    beachfront: false,
-    nearBeach: false,
-    riverfront: false,
     mountainView: false,
     parking: false,
     kitchen: false,

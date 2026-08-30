@@ -8,6 +8,9 @@ import {
   formatBaht,
   AMENITY_OPTIONS,
   AMENITY_LABELS,
+  TRISTATE_FACT_OPTIONS,
+  FACT_UNKNOWN_LABEL,
+  readPropertyFact,
   otherAmenities,
   CAPACITY_FIELDS,
   LOCATION_FIELDS,
@@ -114,21 +117,54 @@ describe('formatting (display formatted, persist numeric)', () => {
 });
 
 describe('amenities canonical mapping', () => {
-  it('common options use canonical matcher keys, not renamed semantics', () => {
+  it('boolean options use canonical matcher keys (tri-state facts moved out)', () => {
     const keys = AMENITY_OPTIONS.map((o) => o.key);
-    expect(keys).toContain('privatePool');
     expect(keys).toContain('karaoke');
     expect(keys).toContain('poolTable');
-    expect(keys).toContain('nearBeach');
-    expect(AMENITY_LABELS.privatePool).toBe('สระว่ายน้ำส่วนตัว');
+    // M9B: privatePool / nearBeach are now tri-state facts, NOT boolean checkboxes.
+    expect(keys).not.toContain('privatePool');
+    expect(keys).not.toContain('nearBeach');
     expect(AMENITY_LABELS.karaoke).toBe('คาราโอเกะ');
   });
-  it('includes the 10 recommended options', () => {
-    expect(AMENITY_OPTIONS).toHaveLength(10);
+  it('includes the 8 boolean amenity options', () => {
+    expect(AMENITY_OPTIONS).toHaveLength(8);
   });
   it('reads custom other amenities safely', () => {
     expect(otherAmenities({ other: ['เครื่องเสียง', ' '] })).toEqual(['เครื่องเสียง']);
-    expect(otherAmenities({ privatePool: true })).toEqual([]);
+    expect(otherAmenities({ privatePool: 'YES' })).toEqual([]);
+  });
+});
+
+describe('tri-state property facts (M9B)', () => {
+  it('exposes the four tri-state facts with owner-friendly Thai labels', () => {
+    const keys = TRISTATE_FACT_OPTIONS.map((f) => f.key);
+    expect(keys).toEqual(['privatePool', 'nearBeach', 'beachfront', 'riverfront']);
+    const byKey = Object.fromEntries(TRISTATE_FACT_OPTIONS.map((f) => [f.key, f]));
+    expect(byKey.privatePool!.label).toBe('สระส่วนตัว');
+    expect(byKey.privatePool!.yesLabel).toBe('มี');
+    expect(byKey.privatePool!.noLabel).toBe('ไม่มี');
+    expect(byKey.nearBeach!.label).toBe('ใกล้ทะเล');
+    expect(byKey.beachfront!.label).toBe('ติดทะเล');
+    expect(byKey.riverfront!.label).toBe('ติดแม่น้ำ');
+  });
+  it('UNKNOWN is shown as plain Thai, not an internal token', () => {
+    expect(FACT_UNKNOWN_LABEL).toBe('ยังไม่ได้ระบุ');
+    expect(FACT_UNKNOWN_LABEL).not.toMatch(/UNKNOWN|null/i);
+  });
+  it('readPropertyFact returns the explicit enum, missing ⇒ UNKNOWN', () => {
+    expect(readPropertyFact({ privatePool: 'YES' }, 'privatePool')).toBe('YES');
+    expect(readPropertyFact({ privatePool: 'NO' }, 'privatePool')).toBe('NO');
+    expect(readPropertyFact({ privatePool: 'UNKNOWN' }, 'privatePool')).toBe('UNKNOWN');
+    expect(readPropertyFact({}, 'nearBeach')).toBe('UNKNOWN');
+  });
+  it('readPropertyFact tolerates legacy booleans: true⇒YES, false⇒UNKNOWN (never NO)', () => {
+    expect(readPropertyFact({ privatePool: true }, 'privatePool')).toBe('YES');
+    expect(readPropertyFact({ nearBeach: false }, 'nearBeach')).toBe('UNKNOWN');
+  });
+  it('a chip appears only for a confirmed-present tri-state fact', () => {
+    expect(amenityChips({ privatePool: 'YES', other: [] })).toEqual(['สระว่ายน้ำส่วนตัว']);
+    // NO and UNKNOWN never surface a chip (no truthiness leak from the string).
+    expect(amenityChips({ privatePool: 'NO', nearBeach: 'UNKNOWN', other: [] })).toEqual([]);
   });
 });
 

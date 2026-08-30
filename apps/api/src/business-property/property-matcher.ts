@@ -1,4 +1,5 @@
 import type { Property } from './types';
+import { factIsPresentV1 } from './property-facts';
 
 /**
  * Deterministic Property matcher foundation (SPRINT 015, Phase L).
@@ -73,22 +74,31 @@ export function matchProperty(property: Property, req: PropertyRequirement): Pro
   }
 
   // Feature requirements — a required feature the property lacks disqualifies it.
+  // M9B COMPATIBILITY: the amenity facts are now tri-state (YES/NO/UNKNOWN), but
+  // v1 semantics are preserved EXACTLY — only a confirmed YES counts as present
+  // (via factIsPresentV1); NO and UNKNOWN both behave as the old boolean `false`
+  // did (disqualify a required feature). Matcher v2 (M9C) will distinguish them.
+  // Never test the enum with truthiness — 'NO'/'UNKNOWN' are truthy strings.
   if (req.needsPrivatePool) {
-    if (property.amenities.privatePool) reasons.push('PRIVATE_POOL_MATCH');
+    if (factIsPresentV1(property.amenities.privatePool)) reasons.push('PRIVATE_POOL_MATCH');
     else {
       reasons.push('PRIVATE_POOL_MISSING');
       disqualified = true;
     }
   }
   if (req.needsBeach) {
-    if (property.amenities.beachfront || property.amenities.nearBeach) reasons.push('BEACH_MATCH');
+    if (
+      factIsPresentV1(property.amenities.beachfront) ||
+      factIsPresentV1(property.amenities.nearBeach)
+    )
+      reasons.push('BEACH_MATCH');
     else {
       reasons.push('BEACH_MISSING');
       disqualified = true;
     }
   }
   if (req.needsRiver) {
-    if (property.amenities.riverfront) reasons.push('RIVER_MATCH');
+    if (factIsPresentV1(property.amenities.riverfront)) reasons.push('RIVER_MATCH');
     else {
       reasons.push('RIVER_MISSING');
       disqualified = true;

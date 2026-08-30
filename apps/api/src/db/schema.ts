@@ -1174,10 +1174,14 @@ export const properties = mysqlTable(
     bedrooms: int('bedrooms'),
     bathrooms: int('bathrooms'),
     beds: int('beds'),
-    privatePool: boolean('private_pool').notNull().default(false),
-    nearBeach: boolean('near_beach').notNull().default(false),
-    beachfront: boolean('beachfront').notNull().default(false),
-    riverfront: boolean('riverfront').notNull().default(false),
+    // Tri-state facts (M9B): NULLABLE boolean — true = YES (confirmed present),
+    // false = NO (confirmed absent), NULL = UNKNOWN (owner has not provided).
+    // The store maps these to the PropertyFact domain enum; nothing reads the
+    // raw boolean via truthiness. Historical false was migrated to NULL/UNKNOWN.
+    privatePool: boolean('private_pool'),
+    nearBeach: boolean('near_beach'),
+    beachfront: boolean('beachfront'),
+    riverfront: boolean('riverfront'),
     // JSON-encoded variable attributes (amenities, pricing, content, media,
     // characteristics, location extras, availability, booking) — (de)serialized
     // in the store layer. Prices live here and are stored ONLY when entered.

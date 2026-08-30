@@ -5,6 +5,7 @@ import type {
   EffectivePropertyPolicies,
 } from './types';
 import { approvedDraftChannels, publicContactChannel } from './contacts';
+import { factIsPresentV1 } from './property-facts';
 
 /**
  * Property-aware Draft context (SPRINT 015, Phase R).
@@ -121,10 +122,13 @@ export function buildPropertyDraftContext(input: BuildDraftContextInput): DraftC
 function amenityLabels(p: Property): string[] {
   const a = p.amenities;
   const out: string[] = [];
-  if (a.privatePool) out.push('private pool');
-  if (a.beachfront) out.push('beachfront');
-  if (a.nearBeach) out.push('near beach');
-  if (a.riverfront) out.push('riverfront');
+  // M9B: only a CONFIRMED (YES) tri-state fact may be stated as an amenity — a
+  // draft must never claim an unconfirmed/absent feature. 'NO'/'UNKNOWN' are
+  // truthy strings, so use factIsPresentV1, not `if (a.privatePool)`.
+  if (factIsPresentV1(a.privatePool)) out.push('private pool');
+  if (factIsPresentV1(a.beachfront)) out.push('beachfront');
+  if (factIsPresentV1(a.nearBeach)) out.push('near beach');
+  if (factIsPresentV1(a.riverfront)) out.push('riverfront');
   if (a.mountainView) out.push('mountain view');
   if (a.karaoke) out.push('karaoke');
   if (a.bbq) out.push('bbq');

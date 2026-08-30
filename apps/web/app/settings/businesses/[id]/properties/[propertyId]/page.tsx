@@ -41,6 +41,9 @@ import {
   priceFieldsForMode,
   formatBaht,
   AMENITY_OPTIONS,
+  TRISTATE_FACT_OPTIONS,
+  FACT_UNKNOWN_LABEL,
+  readPropertyFact,
   otherAmenities,
   LOCATION_FIELDS,
   LOCATION_HELP,
@@ -372,6 +375,41 @@ export default function PropertyEditPage() {
       {tab === 'สิ่งอำนวยความสะดวก' && (
         <Section>
           <Guidance text={PROPERTY_TAB_GUIDANCE['สิ่งอำนวยความสะดวก']} />
+          {/* Tri-state facts (M9B): มี / ไม่มี / ยังไม่ได้ระบุ. UNKNOWN is the
+              honest default — the matcher must not read an unset fact as "ไม่มี". */}
+          <div style={{ marginBottom: '1rem', display: 'grid', gap: '0.6rem' }}>
+            {TRISTATE_FACT_OPTIONS.map((f) => {
+              const current = readPropertyFact(p.amenities, f.key);
+              const choices: Array<{ value: 'YES' | 'NO' | 'UNKNOWN'; label: string }> = [
+                { value: 'YES', label: f.yesLabel },
+                { value: 'NO', label: f.noLabel },
+                { value: 'UNKNOWN', label: FACT_UNKNOWN_LABEL },
+              ];
+              return (
+                <div key={f.key}>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>{f.label}</div>
+                  <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                    {choices.map((c) => (
+                      <label
+                        key={c.value}
+                        style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}
+                      >
+                        <input
+                          type="radio"
+                          name={`fact-${f.key}`}
+                          checked={current === c.value}
+                          onChange={() => set('amenities', { ...p.amenities, [f.key]: c.value })}
+                        />
+                        <span style={{ color: c.value === 'UNKNOWN' ? colors.muted : undefined }}>
+                          {c.label}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
           {AMENITY_OPTIONS.map((o) => (
             <Toggle
               key={o.key}

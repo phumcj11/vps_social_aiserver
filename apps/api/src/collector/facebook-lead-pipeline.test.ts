@@ -146,7 +146,7 @@ async function buildWorld(): Promise<World> {
     await bp.updateProperty(p.id, {
       location: { area: AREA },
       capacity: { maxGuests },
-      amenities: { privatePool: true, karaoke },
+      amenities: { privatePool: 'YES', karaoke },
       ...(price != null ? { pricing: { startingPrice: price } } : {}),
     });
     return p;

@@ -96,7 +96,11 @@ async function seedProperty(
   await bp.updateProperty(p.id, {
     location: { area },
     capacity: { maxGuests },
-    amenities: { privatePool: !!amenities.privatePool, karaoke: !!amenities.karaoke },
+    // M9B: privatePool is a tri-state fact — a confirmed pool is 'YES'.
+    amenities: {
+      privatePool: amenities.privatePool ? 'YES' : 'UNKNOWN',
+      karaoke: !!amenities.karaoke,
+    },
   });
   if (status !== 'active') await bp.setPropertyStatus(p.id, status);
   return p;

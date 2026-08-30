@@ -2,6 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
+import { mkdtempSync, cpSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import mysql from 'mysql2/promise';
 import { drizzle } from 'drizzle-orm/mysql2';
 import { migrate } from 'drizzle-orm/mysql2/migrator';
@@ -137,9 +139,24 @@ describe.skipIf(!RUN)('real MySQL migration apply (Model C 0016/0017)', () => {
     execSync(`docker rm -f ${CONTAINER} 2>/dev/null || true`, { stdio: 'ignore' });
   });
 
-  it('4+7. final migration count is 18 (0016 + 0017 applied via the runner)', async () => {
+  it('4+7. final migration count is 19 (through 0018 applied via the runner)', async () => {
     const [row] = await q<{ n: number }>('SELECT COUNT(*) AS n FROM __drizzle_migrations');
-    expect(Number(row!.n)).toBe(18);
+    expect(Number(row!.n)).toBe(19);
+  });
+
+  it('M9B. the four tri-state fact columns are nullable after 0018', async () => {
+    const cols = await q<{ COLUMN_NAME: string; IS_NULLABLE: string; DATA_TYPE: string }>(
+      `SELECT column_name AS COLUMN_NAME, is_nullable AS IS_NULLABLE, data_type AS DATA_TYPE
+       FROM information_schema.columns
+       WHERE table_schema=? AND table_name='properties'
+         AND column_name IN ('private_pool','near_beach','beachfront','riverfront')`,
+      [DBNAME],
+    );
+    expect(cols).toHaveLength(4);
+    for (const c of cols) {
+      expect(c.IS_NULLABLE).toBe('YES'); // NULL now represents UNKNOWN
+      expect(c.DATA_TYPE).toBe('tinyint'); // MySQL boolean
+    }
   });
 
   it('8. business_group_subscriptions table exists', async () => {
@@ -263,5 +280,120 @@ describe.skipIf(!RUN)('real MySQL migration apply (Model C 0016/0017)', () => {
       [src],
     );
     expect(Number(row!.n)).toBe(2);
+  });
+});
+
+/**
+ * M9B tri-state migration on REAL MySQL WITH LEGACY DATA.
+ *
+ * The block above applies every migration to an empty DB, so it can't exercise
+ * the 0018 data backfill. This one applies migrations through 0017 (a temp
+ * folder with 0018 removed), inserts legacy property rows exactly as v1 stored
+ * them (private_pool 1/0), then applies the real 0018 SQL and verifies the
+ * CRITICAL rule: legacy true(1) → YES(1), legacy false(0) → UNKNOWN(NULL), never
+ * a confirmed NO. Disposable container on its own port; separate from production.
+ */
+const M9B_CONTAINER = 'kmkt-mig-it-m9b';
+const M9B_PORT = 33198;
+const M9B_DB = 'kmkt_it_m9b';
+
+describe.skipIf(!RUN)('real MySQL 0018 tri-state backfill (legacy data)', () => {
+  let m9bPool: mysql.Pool;
+  let tmpMigrations: string;
+
+  beforeAll(async () => {
+    // A migrations folder trimmed to 0000..0017 (0018 removed from the journal).
+    tmpMigrations = mkdtempSync(join(tmpdir(), 'kmkt-mig-'));
+    cpSync(MIGRATIONS, tmpMigrations, { recursive: true });
+    const journalPath = join(tmpMigrations, 'meta', '_journal.json');
+    const journal = JSON.parse(readFileSync(journalPath, 'utf8')) as {
+      entries: Array<{ tag: string }>;
+    };
+    journal.entries = journal.entries.filter((e) => !e.tag.startsWith('0018_'));
+    writeFileSync(journalPath, JSON.stringify(journal, null, 2));
+
+    execSync(`docker rm -f ${M9B_CONTAINER} 2>/dev/null || true`, { stdio: 'ignore' });
+    execSync(
+      `docker run -d --name ${M9B_CONTAINER} -e MYSQL_ROOT_PASSWORD=${ROOT_PW} -e MYSQL_DATABASE=${M9B_DB} -p ${M9B_PORT}:3306 ${IMAGE}`,
+      { stdio: 'ignore' },
+    );
+    const url = `mysql://root:${ROOT_PW}@127.0.0.1:${M9B_PORT}/${M9B_DB}?multipleStatements=true`;
+    await waitForMysql(url);
+    m9bPool = mysql.createPool(url);
+    await migrate(drizzle(m9bPool), { migrationsFolder: tmpMigrations }); // through 0017
+  }, 180_000);
+
+  afterAll(async () => {
+    if (m9bPool) await m9bPool.end();
+    execSync(`docker rm -f ${M9B_CONTAINER} 2>/dev/null || true`, { stdio: 'ignore' });
+    if (tmpMigrations) rmSync(tmpMigrations, { recursive: true, force: true });
+  });
+
+  it('legacy false(0) → NULL(UNKNOWN); legacy true(1) → 1(YES); never a confirmed NO', async () => {
+    // Minimal parents.
+    const ws = randomUUID();
+    const owner = randomUUID();
+    await m9bPool.query('INSERT INTO users (id, email, password_hash) VALUES (?,?,?)', [
+      owner,
+      `${owner}@it.local`,
+      'x',
+    ]);
+    await m9bPool.query('INSERT INTO workspaces (id, owner_user_id, name, slug) VALUES (?,?,?,?)', [
+      ws,
+      owner,
+      'ws',
+      ws,
+    ]);
+    const biz = randomUUID();
+    await m9bPool.query('INSERT INTO businesses (id, workspace_id, name, slug) VALUES (?,?,?,?)', [
+      biz,
+      ws,
+      'biz',
+      biz,
+    ]);
+
+    // Two legacy properties exactly as v1 stored them (columns NOT NULL here).
+    const hasPool = randomUUID(); // private_pool = 1 (legacy true / confirmed)
+    const noPoolFlag = randomUUID(); // private_pool = 0 (legacy ambiguous false)
+    await m9bPool.query(
+      'INSERT INTO properties (id, workspace_id, business_id, name, private_pool, near_beach, beachfront, riverfront) VALUES (?,?,?,?,1,1,0,0)',
+      [hasPool, ws, biz, 'Has Pool'],
+    );
+    await m9bPool.query(
+      'INSERT INTO properties (id, workspace_id, business_id, name, private_pool, near_beach, beachfront, riverfront) VALUES (?,?,?,?,0,0,0,0)',
+      [noPoolFlag, ws, biz, 'No Flags'],
+    );
+
+    // Apply the REAL 0018 migration SQL (DDL + backfill), statement by statement.
+    const sql = readFileSync(join(MIGRATIONS, '0018_jittery_rumiko_fujikawa.sql'), 'utf8');
+    for (const stmt of sql.split('--> statement-breakpoint')) {
+      const clean = stmt
+        .split('\n')
+        .filter((l) => !l.trim().startsWith('--'))
+        .join('\n')
+        .trim();
+      if (clean) await m9bPool.query(clean);
+    }
+
+    const [rows] = await m9bPool.query(
+      'SELECT id, private_pool, near_beach, beachfront FROM properties WHERE id IN (?,?)',
+      [hasPool, noPoolFlag],
+    );
+    const byId = Object.fromEntries(
+      (rows as Array<{ id: string; private_pool: number | null; near_beach: number | null }>).map(
+        (r) => [r.id, r],
+      ),
+    );
+    // Legacy true stays 1 (YES).
+    expect(byId[hasPool]!.private_pool).toBe(1);
+    expect(byId[hasPool]!.near_beach).toBe(1);
+    // Legacy false becomes NULL (UNKNOWN) — NOT 0/NO.
+    expect(byId[noPoolFlag]!.private_pool).toBeNull();
+    expect(byId[noPoolFlag]!.near_beach).toBeNull();
+    // A confirmed NO (0) does not appear anywhere from the migration.
+    const [zeros] = await m9bPool.query<mysql.RowDataPacket[]>(
+      'SELECT COUNT(*) AS n FROM properties WHERE private_pool = 0 OR near_beach = 0 OR beachfront = 0 OR riverfront = 0',
+    );
+    expect(Number(zeros[0]!.n)).toBe(0);
   });
 });

@@ -57,7 +57,7 @@ function property(over: Partial<Property> = {}): Property {
     updatedAt: d(0),
     location: { ...emptyPropertyDefaults().location, area: 'บางแสน' },
     capacity: { ...emptyPropertyDefaults().capacity, maxGuests: 12, bedrooms: 4 },
-    amenities: { ...emptyPropertyDefaults().amenities, privatePool: true },
+    amenities: { ...emptyPropertyDefaults().amenities, privatePool: 'YES' },
     ...over,
   } as Property;
 }

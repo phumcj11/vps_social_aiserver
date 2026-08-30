@@ -194,7 +194,9 @@ export interface Property {
     maxGuests: number | null;
     extraGuestPolicy: string | null;
   };
-  amenities: Record<string, boolean | string[]>;
+  // Boolean amenities, the `other` string[], and the four tri-state facts
+  // (privatePool/nearBeach/beachfront/riverfront) which are 'YES'|'NO'|'UNKNOWN'.
+  amenities: Record<string, boolean | string | string[]>;
   pricing: {
     startingPrice: number | null;
     priceDisplayMode: string;

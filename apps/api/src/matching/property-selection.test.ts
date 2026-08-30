@@ -34,21 +34,21 @@ const villaA = property('villa-a', {
   propertyType: 'pool_villa',
   location: loc('บางแสน'),
   capacity: cap(8),
-  amenities: { ...emptyPropertyDefaults().amenities, privatePool: true },
+  amenities: { ...emptyPropertyDefaults().amenities, privatePool: 'YES' },
 });
 const villaB = property('villa-b', {
   name: 'Villa B',
   propertyType: 'pool_villa',
   location: loc('บางแสน'),
   capacity: cap(15),
-  amenities: { ...emptyPropertyDefaults().amenities, privatePool: true, karaoke: true },
+  amenities: { ...emptyPropertyDefaults().amenities, privatePool: 'YES', karaoke: true },
 });
 const villaC = property('villa-c', {
   name: 'Villa C',
   propertyType: 'pool_villa',
   location: loc('พัทยา'),
   capacity: cap(20),
-  amenities: { ...emptyPropertyDefaults().amenities, privatePool: true },
+  amenities: { ...emptyPropertyDefaults().amenities, privatePool: 'YES' },
 });
 
 const KNOWN_AREAS = ['บางแสน', 'พัทยา'];
@@ -108,7 +108,7 @@ describe('evaluatePropertyCandidate', () => {
     const noKaraoke = property('villa-d', {
       location: loc('บางแสน'),
       capacity: cap(15),
-      amenities: { ...emptyPropertyDefaults().amenities, privatePool: true },
+      amenities: { ...emptyPropertyDefaults().amenities, privatePool: 'YES' },
     });
     const e = evaluatePropertyCandidate(noKaraoke, req);
     expect(e.decision).toBe('MATCH'); // missing amenity is soft, not disqualifying
@@ -137,12 +137,12 @@ describe('selectBestProperty', () => {
     const plain = property('villa-plain', {
       location: loc('บางแสน'),
       capacity: cap(15),
-      amenities: { ...emptyPropertyDefaults().amenities, privatePool: true },
+      amenities: { ...emptyPropertyDefaults().amenities, privatePool: 'YES' },
     });
     const richer = property('villa-rich', {
       location: loc('บางแสน'),
       capacity: cap(15),
-      amenities: { ...emptyPropertyDefaults().amenities, privatePool: true, karaoke: true },
+      amenities: { ...emptyPropertyDefaults().amenities, privatePool: 'YES', karaoke: true },
     });
     const sel = selectBestProperty([plain, richer], req);
     expect(sel.selected?.property.id).toBe('villa-rich');

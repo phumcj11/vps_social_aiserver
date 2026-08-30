@@ -200,7 +200,7 @@ describe('deterministic property matcher', () => {
   const p = property({
     location: { area: 'บางแสน' } as never,
     capacity: { maxGuests: 15, bedrooms: 4 } as never,
-    amenities: { privatePool: true, nearBeach: true } as never,
+    amenities: { privatePool: 'YES', nearBeach: 'YES' } as never,
   });
   it('MATCH on area + capacity + private pool with reasons', () => {
     const r = matchProperty(p, {

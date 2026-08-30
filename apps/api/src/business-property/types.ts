@@ -8,7 +8,9 @@
  */
 
 import type { ImageResponseMode } from '../media/types';
+import type { PropertyFact } from './property-facts';
 export type { ImageResponseMode };
+export type { PropertyFact };
 
 export type Environment = 'test' | 'production';
 export type EntityStatus = 'active' | 'inactive' | 'archived';
@@ -132,11 +134,14 @@ export interface PropertyPricing {
 }
 
 export interface PropertyAmenities {
-  privatePool: boolean;
+  // Tri-state facts (M9B): YES = confirmed present, NO = confirmed absent,
+  // UNKNOWN = owner has not provided / system cannot verify. NOT booleans —
+  // never test with JS truthiness (use the predicates in property-facts.ts).
+  privatePool: PropertyFact;
+  beachfront: PropertyFact;
+  nearBeach: PropertyFact;
+  riverfront: PropertyFact;
   sharedPool: boolean;
-  beachfront: boolean;
-  nearBeach: boolean;
-  riverfront: boolean;
   mountainView: boolean;
   parking: boolean;
   kitchen: boolean;

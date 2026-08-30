@@ -196,7 +196,7 @@ async function seedBusiness(
   await w.bp.updateProperty(property.id, {
     location: { area: AREA },
     capacity: { maxGuests },
-    amenities: { privatePool: true, karaoke },
+    amenities: { privatePool: 'YES', karaoke },
     ...(price != null ? { pricing: { startingPrice: price } } : {}),
   });
 

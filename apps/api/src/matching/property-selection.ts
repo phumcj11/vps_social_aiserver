@@ -1,5 +1,6 @@
 import type { Property, PropertyAmenities } from '../business-property/types';
 import { matchProperty, type PropertyRequirement } from '../business-property/property-matcher';
+import { factIsPresentV1 } from '../business-property/property-facts';
 
 /**
  * Property selection (SPRINT 016B) — the deterministic bridge between a Business
@@ -230,11 +231,17 @@ export function evaluatePropertyCandidate(
   }
 
   // Feature coverage: requested pool/beach/river satisfied + requested amenities matched.
+  // M9B: tri-state facts — count only a confirmed YES (v1 semantics), never the
+  // truthiness of the enum string.
   let coverage = amenity.matched;
-  if (req.needsPrivatePool && property.amenities.privatePool) coverage += 1;
-  if (req.needsBeach && (property.amenities.beachfront || property.amenities.nearBeach))
+  if (req.needsPrivatePool && factIsPresentV1(property.amenities.privatePool)) coverage += 1;
+  if (
+    req.needsBeach &&
+    (factIsPresentV1(property.amenities.beachfront) ||
+      factIsPresentV1(property.amenities.nearBeach))
+  )
     coverage += 1;
-  if (req.needsRiver && property.amenities.riverfront) coverage += 1;
+  if (req.needsRiver && factIsPresentV1(property.amenities.riverfront)) coverage += 1;
 
   return {
     property,
